@@ -1,8 +1,30 @@
-# Add your project dependencies here
-# Example:
-# pandas
-# numpy
-# scikit-learn
-# dvc
-# pytest
-# flake8
+# Data Ingestion
+telethon        # A robust Telegram API client
+
+# Data Processing
+pandas
+numpy
+scikit-learn
+
+# NLP and Machine Learning
+transformers
+datasets
+accelerate
+torch           # PyTorch is a common backend for Hugging Face models
+
+# Model Interpretability
+shap
+lime
+
+# Utilities
+python-dotenv   # For managing environment variables
+loguru          # For enhanced logging
+
+# Development & Notebooks
+jupyterlab
+ipykernel
+tqdm           # For progress bars
+pytest         # For testing
+flake8         # For linting
+isort          # For import sorting
+black          # For code formatting
