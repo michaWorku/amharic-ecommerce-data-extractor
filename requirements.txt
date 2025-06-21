@@ -29,3 +29,4 @@ pytest         # For testing
 flake8         # For linting
 isort          # For import sorting
 black          # For code formatting
+pytest-asyncio
