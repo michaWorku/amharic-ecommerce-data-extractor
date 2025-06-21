@@ -1,18 +1,131 @@
-Amharic-Ecommerce-Data-ExtractorProject DescriptionThis project aims to transform unstructured text data from Amharic e-commerce Telegram channels into structured, machine-readable information. By leveraging advanced Natural Language Processing (NLP) techniques, specifically Named Entity Recognition (NER) with Large Language Models (LLMs), the system extracts key business entities such as product names, prices, and locations. This structured data is then used to populate a centralized database and, critically, to develop a "Vendor Scorecard" for FinTech micro-lending assessment.The ultimate goal is to provide a comprehensive view of vendor activity and engagement, enabling data-driven decisions for potential loan offerings to active and promising e-commerce businesses on Telegram.Key Features:Telegram Data Ingestion: Programmatic scraping of messages (text, images, documents) from selected Amharic e-commerce Telegram channels.Amharic Text Preprocessing: Robust cleaning, tokenization, and normalization tailored for Amharic linguistic features.Named Entity Recognition (NER): Fine-tuning transformer-based LLMs (e.g., XLM-Roberta, mBERT) to accurately identify Product, Price, and Location entities.Model Comparison & Selection: Evaluation of multiple NER models based on performance metrics (F1-score), speed, and robustness.Model Interpretability: Application of SHAP (SHapley Additive exPlanations) and LIME (Local Interpretable Model-agnostic Explanations) to understand model predictions and build trust.Vendor Performance Scorecard Generation: Combining extracted entities with Telegram post metadata (e.g., views, timestamps) to calculate key performance metrics (posting frequency, average views per post, average price point) and derive a weighted "Lending Score" for each vendor.Table of ContentsInstallationUsageProject StructureContributingLicenseInstallationPrerequisitesPython 3.9+Gitpip (Python package installer)StepsClone the repository:git clone https://github.com/your-username/amharic-ecommerce-extractor.git
-cd amharic-ecommerce-extractor
-If you created the project in the current directory:# Already in the project root
-Create and activate a virtual environment:python -m venv .venv
-source .venv/bin/activate  # On Linux/macOS
-# .venv\Scripts\activate   # On Windows
-Install dependencies:pip install -r requirements.txt
-Configure Environment Variables:Create a .env file in the root directory of your project. This file will store sensitive information like Telegram API keys.# .env
-TELEGRAM_API_ID="YOUR_TELEGRAM_API_ID"
-TELEGRAM_API_HASH="YOUR_TELEGRAM_API_HASH"
-# Add any other sensitive configurations here
-You can obtain your Telegram API ID and API Hash from my.telegram.org.UsageThis project provides scripts to streamline the data pipeline, from ingestion to vendor scorecard generation.1. Data IngestionTo start collecting data from Telegram channels:python scripts/run_pipeline.py --stage ingest_data
-(Note: You'll need to implement the telegram_scraper.py and integrate it into run_pipeline.py.)2. Data LabelingAfter data ingestion, you'll need to label a subset of your Amharic text data in CoNLL format. Refer to the data/processed/ directory for where to save your labeled files.3. NER Model Fine-tuningTo fine-tune the NER model:python scripts/run_pipeline.py --stage fine_tune_ner
-(Note: This will execute the training process defined in src/ner_models/ner_trainer.py.)Explore the notebooks/ directory for detailed experimentation and prototyping steps for model training and interpretability.4. Vendor Scorecard GenerationOnce the NER model is trained and entities are extracted, generate the vendor scorecards:python scripts/run_pipeline.py --stage generate_scorecards
-(Note: This will utilize the logic in src/analytics/vendor_scorecard.py.)Project Structure├── .vscode/                 # VSCode specific settings for Python development
+# **Amharic-Ecommerce-Data-Extractor**
+
+## **Project Description**
+
+This project aims to transform unstructured text data from Amharic e-commerce Telegram channels into structured, machine-readable information. By leveraging advanced Natural Language Processing (NLP) techniques, specifically Named Entity Recognition (NER) with Large Language Models (LLMs), the system extracts key business entities such as product names, prices, and locations. This structured data is then used to populate a centralized database and, critically, to develop a "Vendor Scorecard" for FinTech micro-lending assessment.
+
+The ultimate goal is to provide a comprehensive view of vendor activity and engagement, enabling data-driven decisions for potential loan offerings to active and promising e-commerce businesses on Telegram.
+
+Key Features:
+
+- **Telegram Data Ingestion:** Programmatic scraping of messages (text, images, documents) from selected Amharic e-commerce Telegram channels.
+- **Amharic Text Preprocessing:** Robust cleaning, tokenization, and normalization tailored for Amharic linguistic features.
+- **Named Entity Recognition (NER):** Fine-tuning transformer-based LLMs (e.g., XLM-Roberta, mBERT) to accurately identify `Product`, `Price`, and `Location` entities.
+- **Model Comparison & Selection:** Evaluation of multiple NER models based on performance metrics (F1-score), speed, and robustness.
+- **Model Interpretability:** Application of SHAP (SHapley Additive exPlanations) and LIME (Local Interpretable Model-agnostic Explanations) to understand model predictions and build trust.
+- **Vendor Performance Scorecard Generation:** Combining extracted entities with Telegram post metadata (e.g., views, timestamps) to calculate key performance metrics (posting frequency, average views per post, average price point) and derive a weighted "Lending Score" for each vendor.
+
+## **Table of Contents**
+
+- [Installation](#installation)
+- [Usage](#usage)
+- [Project Structure](#project-structure)
+- [Contributing](#contributing)
+- [License](#license)
+
+## **Installation**
+
+### **Prerequisites**
+
+- Python 3.9+
+- Git
+- `pip` (Python package installer)
+
+### **Steps**
+
+1. **Clone the repository:**
+    
+    ```
+    git clone https://github.com/your-username/amharic-ecommerce-extractor.git
+    cd amharic-ecommerce-extractor
+    
+    ```
+    
+    If you created the project in the current directory:
+    
+    ```
+    # Already in the project root
+    
+    ```
+    
+2. **Create and activate a virtual environment:**
+    
+    ```
+    python -m venv .venv
+    source .venv/bin/activate  # On Linux/macOS
+    # .venv\Scripts\activate   # On Windows
+    
+    ```
+    
+3. **Install dependencies:**
+    
+    ```
+    pip install -r requirements.txt
+    
+    ```
+    
+4. Configure Environment Variables:
+    
+    Create a .env file in the root directory of your project. This file will store sensitive information like Telegram API keys.
+    
+    ```
+    # .env
+    TELEGRAM_API_ID="YOUR_TELEGRAM_API_ID"
+    TELEGRAM_API_HASH="YOUR_TELEGRAM_API_HASH"
+    # Add any other sensitive configurations here
+    
+    ```
+    
+    You can obtain your Telegram API ID and API Hash from [my.telegram.org](https://my.telegram.org/).
+    
+
+## **Usage**
+
+This project provides scripts to streamline the data pipeline, from ingestion to vendor scorecard generation.
+
+### **1. Data Ingestion**
+
+To start collecting data from Telegram channels:
+
+```
+python scripts/run_pipeline.py --stage ingest_data
+
+```
+
+*(Note: implement the `telegram_scraper.py` and integrate it into `run_pipeline.py`.)*
+
+### **2. Data Labeling**
+
+After data ingestion, you'll need to label a subset of your Amharic text data in CoNLL format. Refer to the `data/processed/` directory for where to save your labeled files.
+
+### **3. NER Model Fine-tuning**
+
+To fine-tune the NER model:
+
+```
+python scripts/run_pipeline.py --stage fine_tune_ner
+
+```
+
+(Note: This will execute the training process defined in src/models/ner_trainer.py.)
+
+Explore the notebooks/ directory for detailed experimentation and prototyping steps for model training and interpretability.
+
+### **4. Vendor Scorecard Generation**
+
+Once the NER model is trained and entities are extracted, generate the vendor scorecards:
+
+```
+python scripts/run_pipeline.py --stage generate_scorecards
+
+```
+
+*(Note: This will utilize the logic in `src/analytics/vendor_scorecard.py`.)*
+
+## **Project Structure**
+
+```
+├── .vscode/                 # VSCode specific settings for Python development
 │   └── settings.json
 ├── .github/                 # GitHub specific configurations
 │   └── workflows/
@@ -72,8 +185,32 @@ You can obtain your Telegram API ID and API Hash from my.telegram.org.UsageThis 
 │   └── settings.py
 └── examples/                # Example usage of the project components
     └── README.md
-Development and TestingRunning Tests:make test
-# or
-pytest tests/
-Linting:make lint
-ContributingContributions are welcome! Please feel free to open issues or submit pull requests.LicenseThis project is licensed under the MIT License.
+
+```
+
+## **Development and Testing**
+
+- **Running Tests:**
+    
+    ```
+    make test
+    # or
+    pytest tests/
+    
+    ```
+    
+- **Linting:**
+    
+    ```
+    make lint
+    
+    ```
+    
+
+## **Contributing**
+
+Contributions are welcome! Please feel free to open issues or submit pull requests.
+
+## **License**
+
+This project is licensed under the [MIT License].
