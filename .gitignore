@@ -153,10 +153,11 @@ cython_debug/
 
 # --- Data files (managed by DVC/Git LFS, generally not committed directly to Git) ---
 # Exclude actual data files, but allow .keep for empty directory structure
-data/raw/*
-!data/raw/.keep
-data/processed/*
-!data/processed/.keep
+# data/raw/*
+# !data/raw/.keep
+# data/processed/*
+# !data/processed/.keep
+data/raw/media
 
 # Logs
 logs/
@@ -165,3 +166,5 @@ logs/
 # Temporary files
 *.tmp
 *.temp
+
+scraping_session.session
