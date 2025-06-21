@@ -193,75 +193,75 @@ def preprocess_dataframe(df: pd.DataFrame, text_column: str = 'message_text', ou
     logger.info("Text preprocessing complete.")
     return df_copy
 
-if __name__ == '__main__':
-    # --- Example Usage for individual functions ---
-    print("--- Individual Function Tests ---")
-    sample_text_complex = "ጤና ይስጥልኝ! ዋጋው ፻፳፭ ብር ነው። አድራሻችን መገናኛ ስሪ ኤም ሲቲ ሞል ነው። @Shageronlinestore #ቅናሽ 😊 https://t.me/example_product"
-    print(f"Original: {sample_text_complex}")
+# if __name__ == '__main__':
+#     # --- Example Usage for individual functions ---
+#     print("--- Individual Function Tests ---")
+#     sample_text_complex = "ጤና ይስጥልኝ! ዋጋው ፻፳፭ ብር ነው። አድራሻችን መገናኛ ስሪ ኤም ሲቲ ሞል ነው። @Shageronlinestore #ቅናሽ 😊 https://t.me/example_product"
+#     print(f"Original: {sample_text_complex}")
 
-    step1 = apply_unicode_normalization(sample_text_complex)
-    print(f"1. Unicode Norm: {step1}")
+#     step1 = apply_unicode_normalization(sample_text_complex)
+#     print(f"1. Unicode Norm: {step1}")
 
-    step2 = replace_amharic_characters(step1)
-    print(f"2. Char Replace: {step2}")
+#     step2 = replace_amharic_characters(step1)
+#     print(f"2. Char Replace: {step2}")
 
-    step3 = normalize_amharic_numerals(step2)
-    print(f"3. Numeral Norm: {step3}")
+#     step3 = normalize_amharic_numerals(step2)
+#     print(f"3. Numeral Norm: {step3}")
 
-    step4 = remove_urls_mentions_hashtags(step3)
-    print(f"4. Removed URLs/Mentions/Hashtags: {step4}")
+#     step4 = remove_urls_mentions_hashtags(step3)
+#     print(f"4. Removed URLs/Mentions/Hashtags: {step4}")
 
-    step5 = remove_emojis_and_non_amharic_non_ascii(step4)
-    print(f"5. Removed Emojis/Non-Amharic: {step5}")
+#     step5 = remove_emojis_and_non_amharic_non_ascii(step4)
+#     print(f"5. Removed Emojis/Non-Amharic: {step5}")
 
-    step6 = normalize_punctuation(step5)
-    print(f"6. Punctuation Norm: {step6}")
+#     step6 = normalize_punctuation(step5)
+#     print(f"6. Punctuation Norm: {step6}")
 
-    step7 = remove_extra_whitespace(step6)
-    print(f"7. Whitespace Norm: {step7}")
+#     step7 = remove_extra_whitespace(step6)
+#     print(f"7. Whitespace Norm: {step7}")
 
-    final_processed = preprocess_amharic_text(sample_text_complex)
-    print(f"\nFinal Preprocessed (no stopwords): {final_processed}")
+#     final_processed = preprocess_amharic_text(sample_text_complex)
+#     print(f"\nFinal Preprocessed (no stopwords): {final_processed}")
 
-    # --- Example Usage for DataFrame processing ---
-    print("\n--- DataFrame Preprocessing Test ---")
-    dummy_data = {
-        'message_id': [1, 2, 3, 4, 5],
-        'message_text': [
-            "ጤና ይስጥልኝ! ዋጋው 500 ብር ነው። አድራሻችን መገናኛ ስሪ ኤም ሲቲ ሞል ነው። @Shageronlinestore #ቅናሽ",
-            "ይህ ምርት በጣም ቆንጆ ነው። ዋጋ፦ 1,200 ብር. https://t.me/example_product",
-            "አዲስ እቃ ገብቷል!!! ውስን ፍሬ ነው ያለው።",
-            "Hello, this is a test message. Some ዎርዶች and numbers like ፳፫፬፭.", # Mixed text & Geez numerals
-            "፩ ፪ ፫ ፬ ፭ ፮ ፯ ፰ ፱ ፲ ፳ ፻። የዋጋ ቅናሽ አለ።" # Pure Geez numerals
-        ],
-        'message_date': ['2023-01-01', '2023-01-02', '2023-01-03', '2023-01-04', '2023-01-05'],
-        'views': [100, 150, 80, 120, 90],
-        'media_path': [None, 'photos/ch1_msg2.jpg', None, None, None]
-    }
-    dummy_df = pd.DataFrame(dummy_data)
+#     # --- Example Usage for DataFrame processing ---
+#     print("\n--- DataFrame Preprocessing Test ---")
+#     dummy_data = {
+#         'message_id': [1, 2, 3, 4, 5],
+#         'message_text': [
+#             "ጤና ይስጥልኝ! ዋጋው 500 ብር ነው። አድራሻችን መገናኛ ስሪ ኤም ሲቲ ሞል ነው። @Shageronlinestore #ቅናሽ",
+#             "ይህ ምርት በጣም ቆንጆ ነው። ዋጋ፦ 1,200 ብር. https://t.me/example_product",
+#             "አዲስ እቃ ገብቷል!!! ውስን ፍሬ ነው ያለው።",
+#             "Hello, this is a test message. Some ዎርዶች and numbers like ፳፫፬፭.", # Mixed text & Geez numerals
+#             "፩ ፪ ፫ ፬ ፭ ፮ ፯ ፰ ፱ ፲ ፳ ፻። የዋጋ ቅናሽ አለ።" # Pure Geez numerals
+#         ],
+#         'message_date': ['2023-01-01', '2023-01-02', '2023-01-03', '2023-01-04', '2023-01-05'],
+#         'views': [100, 150, 80, 120, 90],
+#         'media_path': [None, 'photos/ch1_msg2.jpg', None, None, None]
+#     }
+#     dummy_df = pd.DataFrame(dummy_data)
     
-    print("\nOriginal DataFrame Sample:")
-    print(dummy_df[['message_id', 'message_text']].head())
+#     print("\nOriginal DataFrame Sample:")
+#     print(dummy_df[['message_id', 'message_text']].head())
 
-    processed_df = preprocess_dataframe(dummy_df.copy())
-    print("\nProcessed DataFrame Sample:")
-    print(processed_df[['message_id', 'message_text', 'preprocessed_text']].head())
+#     processed_df = preprocess_dataframe(dummy_df.copy())
+#     print("\nProcessed DataFrame Sample:")
+#     print(processed_df[['message_id', 'message_text', 'preprocessed_text']].head())
 
-    # Example with stopword removal (assuming AMHARIC_STOP_WORDS is populated)
-    # For demonstration, let's temporarily populate it
-    AMHARIC_STOP_WORDS.update(['ነው', 'የ', 'እና', 'በ', 'ለ', 'ከ'])
-    processed_df_with_stopwords = preprocess_dataframe(dummy_df.copy(), remove_stopwords=True)
-    print("\nProcessed DataFrame with Stopwords Removed Sample:")
-    print(processed_df_with_stopwords[['message_id', 'message_text', 'preprocessed_text']].head())
+#     # Example with stopword removal (assuming AMHARIC_STOP_WORDS is populated)
+#     # For demonstration, let's temporarily populate it
+#     AMHARIC_STOP_WORDS.update(['ነው', 'የ', 'እና', 'በ', 'ለ', 'ከ'])
+#     processed_df_with_stopwords = preprocess_dataframe(dummy_df.copy(), remove_stopwords=True)
+#     print("\nProcessed DataFrame with Stopwords Removed Sample:")
+#     print(processed_df_with_stopwords[['message_id', 'message_text', 'preprocessed_text']].head())
     
-    # Clean up the temporary stop word addition
-    AMHARIC_STOP_WORDS.clear()
+#     # Clean up the temporary stop word addition
+#     AMHARIC_STOP_WORDS.clear()
 
-    # Verify structural integrity (example of saving)
-    # Note: Adjust path if running from main project root for testing purposes
-    # For actual pipeline execution, run_pipeline.py handles the path
-    output_test_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'processed', 'processed_telegram_data_test.csv')
-    os.makedirs(os.path.dirname(output_test_path), exist_ok=True)
-    processed_df.to_csv(output_test_path, index=False, encoding='utf-8')
-    logger.info(f"Test processed data saved to {output_test_path}")
+#     # Verify structural integrity (example of saving)
+#     # Note: Adjust path if running from main project root for testing purposes
+#     # For actual pipeline execution, run_pipeline.py handles the path
+#     output_test_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'processed', 'processed_telegram_data_test.csv')
+#     os.makedirs(os.path.dirname(output_test_path), exist_ok=True)
+#     processed_df.to_csv(output_test_path, index=False, encoding='utf-8')
+#     logger.info(f"Test processed data saved to {output_test_path}")
 
