@@ -36,7 +36,7 @@ Key Features:
 1. **Clone the repository:**
     
     ```
-    git clone https://github.com/your-username/amharic-ecommerce-extractor.git
+    git clone https://github.com/michaWorku/amharic-ecommerce-extractor.git
     cd amharic-ecommerce-extractor
     
     ```
