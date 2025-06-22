@@ -8,6 +8,7 @@ from telethon.tl.types import MessageMediaPhoto, MessageMediaDocument, Channel
 from dotenv import load_dotenv
 import logging
 
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)

@@ -1,10 +1,11 @@
 # Data Ingestion
 telethon        # A robust Telegram API client
 
-# Data Processing
+# Data Processing and Visualization
 pandas
 numpy
 scikit-learn
+seaborn
 
 # NLP and Machine Learning
 transformers
