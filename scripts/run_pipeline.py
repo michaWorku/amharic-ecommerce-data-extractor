@@ -16,7 +16,7 @@ sys.path.append(BASE_DIR)
 # Import the main function from the scraper, now capable of receiving a limit
 from src.data_ingestion.telegram_scraper import main as run_scraper_main
 from src.data_preprocessing.text_preprocessor import preprocess_dataframe
-
+from src.data_ingestion.zip_ingestor import DataIngestorFactory # Import the factory
 
 # Define paths relative to the project root
 DATA_DIR = os.path.join(BASE_DIR, 'data')
@@ -24,6 +24,9 @@ RAW_DATA_DIR = os.path.join(DATA_DIR, 'raw')
 PROCESSED_DATA_DIR = os.path.join(DATA_DIR, 'processed')
 
 RAW_CSV_PATH = os.path.join(RAW_DATA_DIR, 'telegram_data.csv')
+MERGED_CSV_PATH = os.path.join(RAW_DATA_DIR, 'telegram_data_merged.csv') # New merged CSV path
+EXTRACTED_DATA_DIR = os.path.join(RAW_DATA_DIR, 'extracted_data') # New extraction directory
+
 PROCESSED_CSV_PATH = os.path.join(PROCESSED_DATA_DIR, 'preprocessed_telegram_data.csv')
 
 
@@ -37,16 +40,48 @@ async def ingest_data_stage(message_limit: int = None):
     await run_scraper_main(message_limit=message_limit) # Pass the limit to the scraper's main function
     logger.info("Data ingestion stage completed.")
 
-def preprocess_data_stage():
-    """Executes the data preprocessing stage."""
-    logger.info("Starting data preprocessing stage...")
-    if not os.path.exists(RAW_CSV_PATH):
-        logger.error(f"Raw data CSV not found at '{RAW_CSV_PATH}'. Please run 'ingest_data' first.")
+def ingest_zipped_data_stage(zip_file_name: str = 'telegram_data.zip'):
+    """
+    Ingests data from a specified zip file (containing CSVs), merges them,
+    and saves the combined data to a new CSV.
+    """
+    logger.info(f"Starting zipped data ingestion stage for '{zip_file_name}'...")
+    zip_file_path = os.path.join(RAW_DATA_DIR, zip_file_name)
+
+    if not os.path.exists(zip_file_path):
+        logger.error(f"Error: Zip file not found at '{zip_file_path}'. Please ensure it exists.")
         return
 
     try:
-        df = pd.read_csv(RAW_CSV_PATH, encoding='utf-8')
-        logger.info(f"Loaded {len(df)} rows from raw data.")
+        file_extension = os.path.splitext(zip_file_path)[1]
+        data_ingestor = DataIngestorFactory.get_data_ingestor(
+            file_extension, 
+            extract_to_dir=EXTRACTED_DATA_DIR
+        )
+        
+        merged_df = data_ingestor.ingest(zip_file_path)
+        
+        # Save the merged DataFrame
+        merged_df.to_csv(MERGED_CSV_PATH, index=False, encoding='utf-8')
+        logger.info(f"Merged data from '{zip_file_name}' saved to '{MERGED_CSV_PATH}'.")
+
+    except Exception as e:
+        logger.error(f"Error during zipped data ingestion: {e}")
+
+
+def preprocess_data_stage():
+    """Executes the data preprocessing stage."""
+    logger.info("Starting data preprocessing stage...")
+    # Prioritize merged CSV if it exists, otherwise use raw_csv_path
+    input_csv_path = MERGED_CSV_PATH if os.path.exists(MERGED_CSV_PATH) else RAW_CSV_PATH
+
+    if not os.path.exists(input_csv_path):
+        logger.error(f"Input data CSV not found at '{input_csv_path}'. Please run 'ingest_data' or 'ingest_zipped_data' first.")
+        return
+
+    try:
+        df = pd.read_csv(input_csv_path, encoding='utf-8')
+        logger.info(f"Loaded {len(df)} rows from '{os.path.basename(input_csv_path)}'.")
         
         processed_df = preprocess_dataframe(df.copy())
 
@@ -55,7 +90,7 @@ def preprocess_data_stage():
         logger.info(f"Processed data saved to '{PROCESSED_CSV_PATH}'.")
 
     except FileNotFoundError:
-        logger.error(f"Error: Raw data file not found at {RAW_CSV_PATH}")
+        logger.error(f"Error: Input data file not found at {input_csv_path}")
     except Exception as e:
         logger.error(f"Error during data preprocessing: {e}")
 
@@ -74,18 +109,23 @@ def generate_scorecards_stage():
 async def main():
     parser = argparse.ArgumentParser(description="Run various stages of the Amharic E-commerce Data Extractor pipeline.")
     parser.add_argument('--stage', type=str, required=True,
-                        choices=['ingest_data', 'preprocess_data', 'fine_tune_ner', 'generate_scorecards'],
+                        choices=['ingest_data', 'ingest_zipped_data', 'preprocess_data', 'fine_tune_ner', 'generate_scorecards'], # Added new stage
                         help="Specify the pipeline stage to run.")
     
     # Add optional argument for message limit, specifically for ingest_data stage
     parser.add_argument('--limit', type=int, default=None,
                         help="Maximum number of messages to scrape per channel (only for ingest_data stage).")
+    
+    # Add optional argument for zip file name, specifically for ingest_zipped_data stage
+    parser.add_argument('--zip_file', type=str, default='telegram_data.zip',
+                        help="Name of the zip file to ingest (only for ingest_zipped_data stage).")
 
     args = parser.parse_args()
 
     if args.stage == 'ingest_data':
-        # Pass the limit argument to the ingest_data_stage function
         await ingest_data_stage(message_limit=args.limit)
+    elif args.stage == 'ingest_zipped_data':
+        ingest_zipped_data_stage(zip_file_name=args.zip_file)
     elif args.stage == 'preprocess_data':
         preprocess_data_stage()
     elif args.stage == 'fine_tune_ner':
