@@ -12,7 +12,7 @@ transformers
 datasets
 accelerate
 torch           # PyTorch is a common backend for Hugging Face models
-
+seqeval
 # Model Interpretability
 shap
 lime
