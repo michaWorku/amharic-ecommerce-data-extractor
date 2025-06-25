@@ -37,8 +37,8 @@ The ultimate goal is to provide EthioMart with a data-driven, quantifiable view 
 1. **Clone the repository:**
     
     ```
-    git clone https://github.com/michaWorku/amharic-ecommerce-extractor.git
-    cd amharic-ecommerce-extractor
+    git clone https://github.com/michaWorku/amharic-ecommerce-data-extractor.git
+    cd amharic-ecommerce-data-extractor
     
     ```
     
