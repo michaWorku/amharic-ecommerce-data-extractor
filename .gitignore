@@ -157,7 +157,7 @@ cython_debug/
 # !data/raw/.keep
 # data/processed/*
 # !data/processed/.keep
-data/raw/media
+data/raw/
 data/raw/scraped
 data/processed
 
