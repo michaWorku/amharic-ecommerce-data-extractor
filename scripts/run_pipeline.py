@@ -1,183 +1,239 @@
 import argparse
-import asyncio
-import pandas as pd
+import sys
 import os
+from pathlib import Path
 import logging
 
-# Set up basic logging
+# Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Add the project root to the Python path
+project_root = Path(__file__).resolve().parents[1] # Adjust if your structure differs
+sys.path.insert(0, str(project_root))
+
 # Import modules from src
-import sys
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(BASE_DIR)
+try:
+    from src.data_ingestion.telegram_scraper import TelegramScraper
+    from src.data_preprocessing.text_preprocessor import preprocess_dataframe
+    from src.models.ner_trainer import train_ner_model 
+    from src.models.model_evaluator import NERModelEvaluator 
+    from src.analytics.vendor_scorecard import VendorScorecardGenerator 
+    import pandas as pd
+except ImportError as e:
+    logger.error(f"Failed to import a necessary module. Ensure all dependencies are installed and "
+                 f"the project structure is correct. Error: {e}")
+    sys.exit(1)
 
-# Import the main function from the scraper, now capable of receiving a limit
-from src.data_ingestion.telegram_scraper import main as run_scraper_main
-from src.data_preprocessing.text_preprocessor import preprocess_dataframe
-from src.data_ingestion.zip_ingestor import DataIngestorFactory # Import the factory
-from src.analytics.vendor_scorecard import generate_vendor_scorecard # Import the new scorecard function (will create later)
+# Define paths
+RAW_DATA_PATH = project_root / 'data' / 'raw' / 'telegram_data.csv'
+PREPROCESSED_DATA_PATH = project_root / 'data' / 'processed' / 'preprocessed_telegram_data.csv'
+LABELED_DATA_PATH = project_root / 'data' / 'labeled' / '01_labeled_telegram_product_price_location.txt'
+FINE_TUNED_MODEL_DIR = project_root / 'models' / 'fine_tuned_ner_model'
+PREDICTED_LABELS_PATH = project_root / 'data' / 'predicted' / 'telegram_predictions.csv'
+VENDOR_SCORECARD_PATH = project_root / 'data' / 'analytics' / 'vendor_scorecard.csv'
+CHANNELS_FILE = project_root / 'config' / 'channels_to_crawl.txt'
 
-# Define paths relative to the project root
-DATA_DIR = os.path.join(BASE_DIR, 'data')
-RAW_DATA_DIR = os.path.join(DATA_DIR, 'raw')
-PROCESSED_DATA_DIR = os.path.join(DATA_DIR, 'processed')
+# Ensure directories exist
+for path in [RAW_DATA_PATH.parent, PREPROCESSED_DATA_PATH.parent, LABELED_DATA_PATH.parent,
+             FINE_TUNED_MODEL_DIR, PREDICTED_LABELS_PATH.parent, VENDOR_SCORECARD_PATH.parent,
+             CHANNELS_FILE.parent]:
+    os.makedirs(path, exist_ok=True)
 
-RAW_CSV_PATH = os.path.join(RAW_DATA_DIR, 'telegram_data.csv')
-MERGED_CSV_PATH = os.path.join(RAW_DATA_DIR, 'telegram_data_merged.csv') # New merged CSV path
-EXTRACTED_DATA_DIR = os.path.join(RAW_DATA_DIR, 'extracted_data') # New extraction directory
+# Create a dummy channels file if it doesn't exist for initial setup ease
+if not CHANNELS_FILE.exists():
+    with open(CHANNELS_FILE, 'w', encoding='utf-8') as f:
+        f.write("EthioMarketPlace\n")
+        f.write("shega_shop_1\n")
+        f.write("Ethio_online_store\n")
+    logger.info(f"Created a dummy {CHANNELS_FILE} with example channels.")
 
-PREPROCESSED_CSV_PATH = os.path.join(PROCESSED_DATA_DIR, 'preprocessed_telegram_data.csv')
-VENDOR_SCORECARD_OUTPUT_PATH = os.path.join(PROCESSED_DATA_DIR, 'vendor_scorecard.csv') # Output path for scorecard
-
-
-async def ingest_data_stage(message_limit: int = None):
+def ingest_data_stage(limit: int):
     """
-    Executes the data ingestion (scraping) process.
-    Args:
-        message_limit (int, optional): The maximum number of messages to scrape per channel.
+    Ingests data from Telegram channels using the TelegramScraper.
     """
-    logger.info(f"Starting data ingestion stage with message limit: {message_limit if message_limit is not None else 'None (all messages)'} per channel...")
-    await run_scraper_main(message_limit=message_limit) # Pass the limit to the scraper's main function
-    logger.info("Data ingestion stage completed.")
-
-def ingest_zipped_data_stage(zip_file_name: str = 'telegram_data.zip'):
-    """
-    Ingests data from a specified zip file (containing CSVs), merges them,
-    and saves the combined data to a new CSV.
-    """
-    logger.info(f"Starting zipped data ingestion stage for '{zip_file_name}'...")
-    zip_file_path = os.path.join(RAW_DATA_DIR, zip_file_name)
-
-    if not os.path.exists(zip_file_path):
-        logger.error(f"Error: Zip file not found at '{zip_file_path}'. Please ensure it exists.")
-        return
-
-    try:
-        file_extension = os.path.splitext(zip_file_path)[1]
-        data_ingestor = DataIngestorFactory.get_data_ingestor(
-            file_extension, 
-            extract_to_dir=EXTRACTED_DATA_DIR
-        )
-        
-        merged_df = data_ingestor.ingest(zip_file_path)
-        
-        # Save the merged DataFrame
-        merged_df.to_csv(MERGED_CSV_PATH, index=False, encoding='utf-8')
-        logger.info(f"Merged data from '{zip_file_name}' saved to '{MERGED_CSV_PATH}'.")
-
-    except Exception as e:
-        logger.error(f"Error during zipped data ingestion: {e}")
-
+    logger.info(f"--- Starting Data Ingestion Stage (Limit: {limit}) ---")
+    scraper = TelegramScraper(
+        api_id=os.getenv('TELEGRAM_API_ID'),
+        api_hash=os.getenv('TELEGRAM_API_HASH'),
+        channels_file_path=str(CHANNELS_FILE)
+    )
+    scraper.scrape_channels(limit=limit)
+    logger.info("Data Ingestion Stage Complete.")
 
 def preprocess_data_stage():
-    """Executes the data preprocessing stage."""
-    
-    logger.info("Starting data preprocessing stage...")
-    # Prioritize merged CSV if it exists, otherwise use raw_csv_path
-    input_csv_path = RAW_CSV_PATH # MERGED_CSV_PATH if os.path.exists(MERGED_CSV_PATH) else RAW_CSV_PATH
-
-    if not os.path.exists(input_csv_path):
-        logger.error(f"Input data CSV not found at '{input_csv_path}'. Please run 'ingest_data' or 'ingest_zipped_data' first.")
+    """
+    Preprocesses raw Telegram data.
+    """
+    logger.info("--- Starting Data Preprocessing Stage ---")
+    if not RAW_DATA_PATH.exists():
+        logger.error(f"Raw data CSV not found at {RAW_DATA_PATH}. Please run 'ingest_data' stage first.")
         return
 
     try:
-        df = pd.read_csv(input_csv_path, encoding='utf-8')
-        logger.info(f"Loaded {len(df)} rows from '{os.path.basename(input_csv_path)}'.")
-        
-        # Ensure metadata columns are passed through during preprocessing if needed for Task 6
-        # The text_processor.py currently only takes 'message_text' as input for processing.
-        # To ensure 'views', 'date', 'channel' are in processed_df for Task 6,
-        # preprocess_dataframe function should return all original columns + 'preprocessed_text'.
-        # For now, we assume original df columns are retained if not explicitly dropped/transformed.
-        processed_df = preprocess_dataframe(df.copy())
-
-        os.makedirs(PROCESSED_DATA_DIR, exist_ok=True)
-        processed_df.to_csv(PREPROCESSED_CSV_PATH, index=False, encoding='utf-8')
-        logger.info(f"Processed data saved to '{PREPROCESSED_CSV_PATH}'.")
-
-    except FileNotFoundError:
-        logger.error(f"Error: Input data file not found at {input_csv_path}")
+        df_raw = pd.read_csv(RAW_DATA_PATH, low_memory=False)
+        # Ensure 'message_text' column is handled as string for preprocessing
+        df_raw['message_text'] = df_raw['message_text'].astype(str).fillna('')
+        df_processed = preprocess_dataframe(df_raw, text_column='message_text', output_column='preprocessed_text')
+        # Ensure 'views' column is numeric and fill NaN with 0 for consistency
+        df_processed['views'] = pd.to_numeric(df_processed['views'], errors='coerce').fillna(0).astype(int)
+        df_processed['message_date'] = pd.to_datetime(df_processed['message_date'], errors='coerce')
+        df_processed.to_csv(PREPROCESSED_DATA_PATH, index=False)
+        logger.info(f"Preprocessed data saved to {PREPROCESSED_DATA_PATH}")
     except Exception as e:
         logger.error(f"Error during data preprocessing: {e}")
+        return
+    logger.info("Data Preprocessing Stage Complete.")
 
-# Placeholder for future stages
-def fine_tune_ner_stage():
-    """Placeholder for the NER model fine-tuning stage."""
-    logger.info("Starting NER model fine-tuning stage (Not yet implemented in pipeline script).")
-    # This will eventually call functions from src.ner_models.ner_trainer
-    # For now, fine-tuning is expected to be done via 02_Amharic_NER_Fine_Tuning_Experimentation.ipynb
-    pass
+def fine_tune_ner_stage(model_name: str, epochs: int, batch_size: int):
+    """
+    Fine-tunes the NER model.
+    """
+    logger.info(f"--- Starting NER Model Fine-tuning Stage (Model: {model_name}) ---")
+    if not LABELED_DATA_PATH.exists():
+        logger.error(f"Labeled data not found at {LABELED_DATA_PATH}. Please ensure you have a labeled dataset for fine-tuning.")
+        logger.info("For demonstration, you can run `python src/models/ner_trainer.py` to create dummy labeled data and a test model.")
+        return
+
+    train_ner_model(
+        labeled_data_path=str(LABELED_DATA_PATH),
+        output_model_dir=str(FINE_TUNED_MODEL_DIR),
+        model_name=model_name,
+        num_train_epochs=epochs,
+        per_device_train_batch_size=batch_size,
+        per_device_eval_batch_size=batch_size,
+    )
+    logger.info("NER Model Fine-tuning Stage Complete.")
+
+def evaluate_ner_stage():
+    """
+    Evaluates the fine-tuned NER model and performs interpretability analysis.
+    """
+    logger.info("--- Starting NER Model Evaluation Stage ---")
+    if not FINE_TUNED_MODEL_DIR.exists() or not any(FINE_TUNED_MODEL_DIR.iterdir()):
+        logger.error(f"Fine-tuned model not found at {FINE_TUNED_MODEL_DIR}. Please run 'fine_tune_ner' stage first.")
+        return
+
+    evaluator = NERModelEvaluator(model_dir=str(FINE_TUNED_MODEL_DIR))
+
+    # Perform inference on preprocessed data and save
+    if PREPROCESSED_DATA_PATH.exists():
+        evaluator.predict_and_save_entities(
+            preprocessed_data_path=str(PREPROCESSED_DATA_PATH),
+            output_predictions_csv_path=str(PREDICTED_LABELS_PATH)
+        )
+    else:
+        logger.warning(f"Preprocessed data not found at {PREPROCESSED_DATA_PATH}. Skipping entity prediction on full dataset.")
+
+    # Perform interpretability analysis (requires a labeled evaluation dataset)
+    # Re-use read_conll from conll_parser
+    try:
+        from src.utils.conll_parser import read_conll as read_conll_for_dataset
+        from datasets import Dataset
+        raw_data_for_eval_dataset = read_conll_for_dataset(str(LABELED_DATA_PATH))
+        if raw_data_for_eval_dataset:
+            # Need to derive id_to_label and label_to_id from the full labeled dataset
+            all_labels_for_eval = sorted(list(set(item['label'] for sentence in raw_data_for_eval_dataset for item in sentence)))
+            label_to_id_for_eval = {label: i for i, label in enumerate(all_labels_for_eval)}
+            id_to_label_for_eval = {i: label for label, i in label_to_id_for_eval.items()}
+
+            valid_tokens_for_eval = []
+            valid_ner_tags_for_eval = []
+            for sentence_data in raw_data_for_eval_dataset:
+                tokens_sentence = [item['text'] for item in sentence_data]
+                ner_tags_sentence = [label_to_id_for_eval[item['label']] for item in sentence_data]
+                if tokens_sentence and ner_tags_sentence:
+                    valid_tokens_for_eval.append(tokens_sentence)
+                    valid_ner_tags_for_eval.append(ner_tags_sentence)
+
+            eval_dataset_for_interp = Dataset.from_dict({"tokens": valid_tokens_for_eval, "ner_tags": valid_ner_tags_for_eval})
+
+            # Pass the correct id_to_label and label_to_id to the evaluator
+            evaluator.id_to_label = id_to_label_for_eval
+            evaluator.label_to_id = label_to_id_for_eval
+
+            evaluator.analyze_interpretability(eval_dataset=eval_dataset_for_interp, num_examples=5)
+        else:
+            logger.warning(f"No labeled data found at {LABELED_DATA_PATH} for interpretability analysis. Skipping.")
+    except Exception as e:
+        logger.error(f"Error preparing data for interpretability analysis: {e}")
+        import traceback
+        traceback.print_exc()
+
+    logger.info("NER Model Evaluation Stage Complete.")
 
 def generate_scorecards_stage():
-    """Executes the vendor scorecard generation stage."""
-    logger.info("Starting vendor scorecard generation stage...")
+    """
+    Generates vendor scorecards using predicted entities and preprocessed data.
+    """
+    logger.info("--- Starting Vendor Scorecard Generation Stage ---")
+    if not PREDICTED_LABELS_PATH.exists():
+        logger.error(f"Predicted labels CSV not found at {PREDICTED_LABELS_PATH}. Please run 'evaluate_ner' stage first.")
+        return
+    if not PREPROCESSED_DATA_PATH.exists():
+        logger.error(f"Preprocessed data CSV not found at {PREPROCESSED_DATA_PATH}. This is needed for original metadata.")
+        return
+
     try:
-        # Load the preprocessed data with NER results (assuming it's saved/passed)
-        # For simplicity, this stage will try to load the final output from Task 6 notebook
-        # If the notebook is used as a script, it should output a CSV here.
-        # Otherwise, this would load PREPROCESSED_CSV_PATH and run NER inference within this stage.
-        # For now, we assume the notebook saves a combined CSV or this function will do the processing.
-        # A more robust implementation would make a dedicated function in src/analytics/
-        # that takes preprocessed_df and the NER model, performs inference, and then calculates scores.
+        df_predictions = pd.read_csv(PREDICTED_LABELS_PATH, low_memory=False)
+        df_preprocessed = pd.read_csv(PREPROCESSED_DATA_PATH, low_memory=False)
 
-        # *** IMPORTANT ***
-        # The `generate_vendor_scorecard` function is expected to:
-        # 1. Load the `preprocessed_telegram_data.csv`.
-        # 2. Load the fine-tuned NER model (e.g., from Hugging Face Hub or local path).
-        # 3. Run NER inference on the data.
-        # 4. Calculate all vendor metrics.
-        # 5. Calculate the Lending Score.
-        # 6. Save the final scorecard to VENDOR_SCORECARD_OUTPUT_PATH.
-        # This setup assumes src.analytics.vendor_scorecard.py will be fleshed out to do this.
+        # Ensure correct types and handle potential NaNs from CSV read
+        df_predictions['token'] = df_predictions['token'].astype(str).fillna('')
+        df_predictions['predicted_label'] = df_predictions['predicted_label'].astype(str).fillna('O')
+        df_preprocessed['message_date'] = pd.to_datetime(df_preprocessed['message_date'], errors='coerce')
+        df_preprocessed['views'] = pd.to_numeric(df_preprocessed['views'], errors='coerce').fillna(0).astype(int)
+        df_preprocessed['channel_username'] = df_preprocessed['channel_username'].astype(str).fillna('unknown_channel')
 
-        # For the purpose of this pipeline script, we call a hypothetical function.
-        # In actual implementation, `generate_vendor_scorecard` needs to be defined
-        # in src/analytics/vendor_scorecard.py as part of Task 6 completion.
-        
-        # This line will call the function we plan to create in src/analytics/vendor_scorecard.py
-        # It needs the path to processed data and potentially the model path/name.
-        # Let's define the signature it would need:
-        generate_vendor_scorecard(
-            preprocessed_data_path=PREPROCESSED_CSV_PATH,
-            model_path_or_name=os.path.join(BASE_DIR, 'fine_tuned_ner_model'), # Assuming local save
-            output_scorecard_path=VENDOR_SCORECARD_OUTPUT_PATH
-        )
-        logger.info(f"Vendor scorecard generated and saved to '{VENDOR_SCORECARD_OUTPUT_PATH}'.")
+        scorecard_generator = VendorScorecardGenerator()
+        vendor_scorecard_df = scorecard_generator.generate_scorecard(df_predictions, df_preprocessed)
+        vendor_scorecard_df.to_csv(VENDOR_SCORECARD_PATH, index=False)
+        logger.info(f"Vendor scorecard saved to {VENDOR_SCORECARD_PATH}")
     except Exception as e:
         logger.error(f"Error during vendor scorecard generation: {e}")
+        import traceback
+        traceback.print_exc()
+        return
+    logger.info("Vendor Scorecard Generation Stage Complete.")
 
-
-async def main():
-    parser = argparse.ArgumentParser(description="Run various stages of the Amharic E-commerce Data Extractor pipeline.")
+def main():
+    parser = argparse.ArgumentParser(description="Run the Amharic E-commerce Data Extractor pipeline stages.")
     parser.add_argument('--stage', type=str, required=True,
-                        choices=['ingest_data', 'ingest_zipped_data', 'preprocess_data', 'fine_tune_ner', 'generate_scorecards'], # Added new stage
-                        help="Specify the pipeline stage to run.")
-    
-    # Add optional argument for message limit, specifically for ingest_data stage
-    parser.add_argument('--limit', type=int, default=None,
-                        help="Maximum number of messages to scrape per channel (only for ingest_data stage).")
-    
-    # Add optional argument for zip file name, specifically for ingest_zipped_data stage
-    parser.add_argument('--zip_file', type=str, default='telegram_data.zip',
-                        help="Name of the zip file to ingest (only for ingest_zipped_data stage).")
+                        choices=['ingest_data', 'preprocess_data', 'fine_tune_ner', 'evaluate_ner', 'generate_scorecards', 'all'],
+                        help='Specify the pipeline stage to run.')
+    parser.add_argument('--limit', type=int, default=500,
+                        help='Limit the number of messages to scrape during data ingestion.')
+    parser.add_argument('--model_name', type=str, default="xlm-roberta-base",
+                        help='Hugging Face model name for NER fine-tuning (e.g., xlm-roberta-base, bert-base-multilingual-cased).')
+    parser.add_argument('--epochs', type=int, default=3,
+                        help='Number of training epochs for NER fine-tuning.')
+    parser.add_argument('--batch_size', type=int, default=16,
+                        help='Batch size for NER fine-tuning.')
 
     args = parser.parse_args()
 
     if args.stage == 'ingest_data':
-        await ingest_data_stage(message_limit=args.limit)
-    elif args.stage == 'ingest_zipped_data':
-        ingest_zipped_data_stage(zip_file_name=args.zip_file)
+        ingest_data_stage(args.limit)
     elif args.stage == 'preprocess_data':
         preprocess_data_stage()
     elif args.stage == 'fine_tune_ner':
-        fine_tune_ner_stage() # Note: This is still a placeholder; actual training is in notebook
+        fine_tune_ner_stage(args.model_name, args.epochs, args.batch_size)
+    elif args.stage == 'evaluate_ner':
+        evaluate_ner_stage()
     elif args.stage == 'generate_scorecards':
         generate_scorecards_stage()
+    elif args.stage == 'all':
+        ingest_data_stage(args.limit)
+        preprocess_data_stage()
+        # Note: 'all' stage for fine_tune_ner and evaluate_ner might be very time/resource intensive
+        # For a full 'all' run, consider running fine_tune_ner and evaluate_ner separately first,
+        # and only include if resources permit and you are sure labeled data is ready.
+        # For now, I'll include them sequentially, assuming necessary data (e.g., labeled data) is ready.
+        fine_tune_ner_stage(args.model_name, args.epochs, args.batch_size)
+        evaluate_ner_stage()
+        generate_scorecards_stage()
     else:
-        logger.error("Invalid stage specified.")
-
+        logger.error(f"Unknown stage: {args.stage}")
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    main()
