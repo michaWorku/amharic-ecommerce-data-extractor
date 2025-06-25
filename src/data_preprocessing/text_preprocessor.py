@@ -10,7 +10,7 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# --- Amharic Character Mappings (from references) ---
+# Amharic Character Mappings (from references)
 # Map for common Amharic character variations to a canonical form
 # This mapping needs to be comprehensive based on observed data.
 # This is a representative sample based on typical Amharic preprocessing needs.
@@ -38,7 +38,7 @@ AMHARIC_NUMERAL_MAP = {
     '፲': '10', '፳': '20', '፴': '30', '፵': '40', '፶': '50',
     '፷': '60', '፸': '70', '፹': '80', '፺': '90', '፻': '100', '፼': '10000'
 }
-# --- Amharic Stop Words ---
+# Amharic Stop Words
 # Extended sample list to cover common stopwords and test requirements.
 # Includes punctuation to be removed by stopword function if it treats them as words.
 AMHARIC_STOP_WORDS = {
@@ -52,7 +52,7 @@ AMHARIC_STOP_WORDS = {
     '።', ',', '.', '?', '!', ':', ';', '-', '፣', '፤', '፧', '፡', '፦'
 }
 
-# --- Punctuation characters for Tokenization ---
+# Punctuation characters for Tokenization
 # This list is used by the tokenizer to identify individual punctuation tokens.
 # It includes ASCII and Ethiopian punctuation, EXCLUDING '#' and '@' as per test expectation for attached tokens.
 # Also excludes '_' to keep words like 'አዲስ_እቃ' together.
@@ -233,7 +233,7 @@ def tokenize_amharic_text(text: str) -> list[str]:
     return tokens
 
 
-# --- Main Preprocessing Function ---
+# Main Preprocessing Function
 def preprocess_amharic_text(text: Any, remove_stopwords: bool = False) -> str:
     """
     Applies a series of robust preprocessing steps to a single Amharic text string.
@@ -341,8 +341,8 @@ def preprocess_dataframe(df: pd.DataFrame, text_column: str = 'message_text', ou
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-    # --- Example Usage for individual functions ---
-    print("--- Individual Function Tests ---")
+    # Example Usage for individual functions
+    print("--- Individual Function Tests")
     sample_text_complex = "ጤና ይስጥልኝ! ዋጋው ፻፳፭ ብር ነው። አድራሻችን መገናኛ ስሪ ኤም ሲቲ ሞል ነው። @Shageronlinestore #ቅናሽ 😊 https://t.me/example_product"
     print(f"Original: {sample_text_complex}")
 
@@ -373,8 +373,8 @@ if __name__ == '__main__':
     print(f"Final Tokens: {final_tokens}")
 
 
-    # --- Example Usage for DataFrame processing ---
-    print("\n--- DataFrame Preprocessing Test ---")
+    # Example Usage for DataFrame processing
+    print("\n--- DataFrame Preprocessing Test")
 
     # Get project root based on script location (src/data_preprocessing/)
     current_script_dir = Path(__file__).parent
@@ -397,7 +397,7 @@ if __name__ == '__main__':
         df_actual = pd.read_csv(input_csv_path, encoding='utf-8')
         print(f"\nLoaded actual data: {df_actual.shape[0]} messages.")
 
-        # --- DEMO-SPECIFIC DATA CLEANING: CRUCIAL FOR VERIFICATION ---
+        # DEMO-SPECIFIC DATA CLEANING: CRUCIAL FOR VERIFICATION
         # These steps ensure the DataFrame has expected types and no NaNs
         # before being passed to preprocess_dataframe for the demo.
         # This mirrors robust loading you'd want in a production pipeline.
@@ -441,7 +441,7 @@ if __name__ == '__main__':
         # Preprocess the DataFrame
         processed_df_actual = preprocess_dataframe(df_actual.copy(), text_column='message_text', remove_stopwords=False)
 
-        # --- Final type casting for robustness before saving ---
+        # Final type casting for robustness before saving
         # Ensure 'preprocessed_text' is definitely a string type before saving to CSV
         if 'preprocessed_text' in processed_df_actual.columns:
             processed_df_actual['preprocessed_text'] = processed_df_actual['preprocessed_text'].astype(str)
@@ -531,7 +531,7 @@ if __name__ == '__main__':
             else:
                 print(f"ERROR: Reloaded DataFrame's '{col}' is missing.")
         
-        # --- Preprocessor Summary Statistics ---
+        # Preprocessor Summary Statistics
         logger.info("Generating summary statistics for preprocessed data...")
         if not reloaded_df.empty:
             num_channels_processed = reloaded_df['channel_username'].nunique()
@@ -540,18 +540,18 @@ if __name__ == '__main__':
             tokens_empty_count = (reloaded_df['tokens'].apply(len) == 0).sum() # Count messages with empty token lists
 
 
-            print("\n--- Overall Preprocessed Data Summary ---")
+            print("\n--- Overall Preprocessed Data Summary")
             print(f"Total Unique Channels Processed: {num_channels_processed}")
             print(f"Total Messages Processed: {total_messages_processed}")
             print(f"Messages with Empty Preprocessed Text: {empty_preprocessed_text_count}")
             print(f"Messages with Empty Token Lists: {tokens_empty_count}")
-            print("\n--- Missing Values Count (Overall Preprocessed Data) ---")
+            print("\n--- Missing Values Count (Overall Preprocessed Data)")
             # Drop the original message_text column from this check as it's the source
             columns_for_nan_check = [col for col in reloaded_df.columns if col not in ['message_text', 'tokens']] # Exclude tokens from traditional NaN check here
             # For tokens, we specifically check for empty lists as handled above.
             print(reloaded_df[columns_for_nan_check].isnull().sum()[reloaded_df[columns_for_nan_check].isnull().sum() > 0].to_string())
 
-            print("\n--- Per-Channel Preprocessed Data Summary ---")
+            print("\n--- Per-Channel Preprocessed Data Summary")
             messages_per_channel_processed = reloaded_df['channel_username'].value_counts().rename('Total Messages Processed')
             print("\nTotal Messages Processed per Channel:")
             print(messages_per_channel_processed.to_string())
