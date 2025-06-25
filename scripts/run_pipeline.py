@@ -178,6 +178,6 @@ async def main():
     else:
         logger.error("Invalid stage specified.")
 
+
 if __name__ == '__main__':
     asyncio.run(main())
-
