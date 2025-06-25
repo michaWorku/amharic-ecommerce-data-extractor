@@ -2,24 +2,25 @@
 
 ## **Project Description**
 
-This project aims to transform unstructured text data from Amharic e-commerce Telegram channels into structured, machine-readable information. By leveraging advanced Natural Language Processing (NLP) techniques, specifically Named Entity Recognition (NER) with Large Language Models (LLMs), the system extracts key business entities such as product names, prices, and locations. This structured data is then used to populate a centralized database and, critically, to develop a "Vendor Scorecard" for FinTech micro-lending assessment.
+This project delivers a robust FinTech solution designed to transform unstructured e-commerce text data from Amharic Telegram channels into structured, machine-readable information. By leveraging advanced Natural Language Processing (NLP) techniques, particularly fine-tuned Named Entity Recognition (NER) models based on Large Language Models (LLMs), the system accurately extracts key business entities such as **product names, prices, locations, and contact information**. This structured data is then used to populate a centralized database and, critically, to develop a comprehensive "Vendor Scorecard" for FinTech micro-lending assessment.
 
-The ultimate goal is to provide a comprehensive view of vendor activity and engagement, enabling data-driven decisions for potential loan offerings to active and promising e-commerce businesses on Telegram.
+The ultimate goal is to provide EthioMart with a data-driven, quantifiable view of vendor activity, engagement, and market standing. This enables informed decision-making for potential loan offerings to active and promising e-commerce businesses operating on Telegram, thereby reducing lending risk and optimizing financial support.
 
-Key Features:
+**Key Features:**
 
-- **Telegram Data Ingestion:** Programmatic scraping of messages (text, images, documents) from selected Amharic e-commerce Telegram channels.
-- **Amharic Text Preprocessing:** Robust cleaning, tokenization, and normalization tailored for Amharic linguistic features.
-- **Named Entity Recognition (NER):** Fine-tuning transformer-based LLMs (e.g., XLM-Roberta, mBERT) to accurately identify `Product`, `Price`, and `Location` entities.
-- **Model Comparison & Selection:** Evaluation of multiple NER models based on performance metrics (F1-score), speed, and robustness.
-- **Model Interpretability:** Application of SHAP (SHapley Additive exPlanations) and LIME (Local Interpretable Model-agnostic Explanations) to understand model predictions and build trust.
-- **Vendor Performance Scorecard Generation:** Combining extracted entities with Telegram post metadata (e.g., views, timestamps) to calculate key performance metrics (posting frequency, average views per post, average price point) and derive a weighted "Lending Score" for each vendor.
+- **Telegram Data Ingestion:** Programmatic and efficient scraping of raw message data (text and associated metadata like views, dates, channel information) from selected Amharic e-commerce Telegram channels. Includes detailed summary statistics for scraped data quality and volume per channel.
+- **Amharic Text Preprocessing:** A modular and robust pipeline for cleaning, normalizing, and standardizing raw Amharic text data. This includes Unicode normalization, character and numeral mapping, removal of noise (URLs, mentions, hashtags, emojis), punctuation standardization, whitespace normalization, and the generation of a dedicated `tokens` column for downstream NLP tasks. Provides comprehensive summary statistics on preprocessing effectiveness and data completeness.
+- **Named Entity Recognition (NER):** Fine-tuning state-of-the-art transformer-based LLMs (e.g., XLM-RoBERTa, mBERT) to accurately identify `Product`, `Price`, `Location`, and `Contact Info` entities in Amharic e-commerce messages.
+- **Model Comparison & Selection:** Rigorous evaluation and comparison of multiple fine-tuned NER models based on performance metrics (F1-score, Precision, Recall), demonstrating `xlm-roberta-base` as the superior choice for this specific task.
+- **Vendor Performance Scorecard Generation:** A sophisticated analytics engine that combines extracted entities with Telegram post metadata (views, timestamps, channel/vendor name) to calculate key performance indicators (KPIs) such as posting frequency, average views per post, average price point, and top-performing products. These KPIs are then aggregated into a weighted **"Lending Score"** for each vendor, providing actionable insights for micro-lending decisions.
+- **Model Interpretability (Exploration):** Preliminary application of SHAP (SHapley Additive exPlanations) and LIME (Local Interpretable Model-agnostic Explanations) to understand feature contributions and local predictions of the NER model, building trust and transparency.
 
 ## **Table of Contents**
 
 - [Installation](#installation)
 - [Usage](#usage)
 - [Project Structure](#project-structure)
+- [Development and Testing](#development-and-testing)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -41,12 +42,7 @@ Key Features:
     
     ```
     
-    If you created the project in the current directory:
-    
-    ```
-    # Already in the project root
-    
-    ```
+    *(If you created the project in your current directory, you can skip `git clone` and `cd`.)*
     
 2. **Create and activate a virtual environment:**
     
@@ -78,49 +74,71 @@ Key Features:
     
     You can obtain your Telegram API ID and API Hash from [my.telegram.org](https://my.telegram.org/).
     
+5. Prepare Channels List:
+    
+    Create a file named channels_to_crawl.txt inside the data/config/ directory (e.g., data/config/channels_to_crawl.txt). List the Telegram channel usernames (e.g., @Shageronlinestore, @EthiopianMarketPlace) you wish to scrape, one per line. The scraping script will read from this file.
+    
+    ```
+    # data/config/channels_to_crawl.txt
+    channel_username
+    Shageronlinestore
+    EthiopianMarketPlace
+    Ethio_Mereja
+    
+    ```
+    
 
 ## **Usage**
 
-This project provides scripts to streamline the data pipeline, from ingestion to vendor scorecard generation.
+This project provides a streamlined pipeline via `scripts/run_pipeline.py` to execute each stage of the data processing.
 
-### **1. Data Ingestion**
+### **1. Data Ingestion (Scraping Telegram Channels)**
 
-To start collecting data from Telegram channels:
-
-```
-python scripts/run_pipeline.py --stage ingest_data
+Collect raw messages and metadata from Telegram channels. The scraper skips media downloads by default for efficiency.
 
 ```
-
-*(Note: implement the `telegram_scraper.py` and integrate it into `run_pipeline.py`.)*
-
-### **2. Data Labeling**
-
-After data ingestion, you'll need to label a subset of your Amharic text data in CoNLL format. Refer to the `data/processed/` directory for where to save your labeled files.
-
-### **3. NER Model Fine-tuning**
-
-To fine-tune the NER model:
-
-```
-python scripts/run_pipeline.py --stage fine_tune_ner
+python scripts/run_pipeline.py --stage ingest_data --limit 100 # Adjust limit as needed, e.g., 10000 for larger data
 
 ```
 
-(Note: This will execute the training process defined in src/models/ner_trainer.py.)
+*(After execution, check `data/raw/telegram_data.csv` and the console output for scraping summary statistics.)*
 
-Explore the notebooks/ directory for detailed experimentation and prototyping steps for model training and interpretability.
+### **2. Data Preprocessing**
+
+Clean, normalize, and transform the raw Amharic text data. This generates `preprocessed_text` and `tokens` columns.
+
+```
+python scripts/run_pipeline.py --stage preprocess_data
+
+```
+
+*(After execution, check `data/processed/preprocessed_telegram_data.csv` and the console output for preprocessing summary statistics.)*
+
+### **3. Named Entity Recognition (NER) Model Fine-tuning**
+
+This stage involves preparing the labeled dataset and fine-tuning multilingual transformer models for Amharic NER.
+
+- **Manual Data Labeling:** A subset of your `preprocessed_telegram_data.csv` (or similar cleaned text) needs to be manually labeled in CoNLL format for `Product`, `Price`, `Location`, and `Contact Info` entities. Refer to the `data/labeled/` directory for example formats.
+- **Run Fine-tuning:**
+    
+    ```
+    python scripts/run_pipeline.py --stage fine_tune_ner
+    
+    ```
+    
+    *(This executes the training process defined in `src/models/ner_trainer.py` and saves the fine-tuned model. Refer to `notebooks/02_Amharic_NER_Fine_Tuning_Experimentation.ipynb` for detailed experimentation and model comparison results.)*
+    
 
 ### **4. Vendor Scorecard Generation**
 
-Once the NER model is trained and entities are extracted, generate the vendor scorecards:
+Generate the comprehensive vendor scorecards by combining NER extracted entities with Telegram post metadata.
 
 ```
 python scripts/run_pipeline.py --stage generate_scorecards
 
 ```
 
-*(Note: This will utilize the logic in `src/analytics/vendor_scorecard.py`.)*
+*(This utilizes the logic in `src/analytics/vendor_scorecard.py`. Refer to `notebooks/03_Vendor_Scorecard_Development.ipynb` for detailed methodology and results.)*
 
 ## **Project Structure**
 
@@ -144,16 +162,16 @@ python scripts/run_pipeline.py --stage generate_scorecards
 │   ├── data_preprocessing/  # Modules for cleaning and transforming raw Amharic text
 │   │   ├── __init__.py
 │   │   └── text_processor.py
-│   ├── models/          # Code for NER model fine-tuning, evaluation, and interpretability
+│   ├── models/              # Code for NER model fine-tuning, evaluation, and interpretability
 │   │   ├── __init__.py
 │   │   ├── ner_trainer.py
 │   │   └── model_evaluator.py
 │   ├── analytics/           # Logic for generating vendor performance metrics and scorecards
 │   │   ├── __init__.py
 │   │   └── vendor_scorecard.py
-│   └── utils/               # General utility functions, custom tokenizers, CoNLL parsers
+│   └── data_labeling/       # Module for CoNLL format labeling, CoNLL parsers
 │       ├── __init__.py
-│       ├── custom_tokenizers.py
+│       ├── prepare_dat_for_labeling.py
 │       └── conll_parser.py
 ├── tests/                   # Test suite (unit, integration)
 │   ├── unit/                # Unit tests for individual components
@@ -166,23 +184,24 @@ python scripts/run_pipeline.py --stage generate_scorecards
 │       └── test_end_to_end.py
 ├── notebooks/               # Jupyter notebooks for experimentation, EDA, prototyping
 │   ├── 01_EDA_and_Scraping_Prototyping.ipynb
-│   ├── 02_NER_Fine_Tuning_Experimentation.ipynb
-│   ├── 03_Model_Interpretability_Exploration.ipynb
-│   ├── 04_Vendor_Scorecard_Development.ipynb
-│   └── README.md
-├── scripts/                 # Standalone utility scripts (e.g., data processing, deployment)
+│   ├── 02_Amharic_NER_Fine_Tuning_Experimentation.ipynb
+│   ├── 03_Vendor_Scorecard_Development.ipynb
+│   └── README.md            # README for notebooks directory
+├── scripts/                 # Standalone utility scripts (e.g., pipeline orchestration, labeling helpers)
 │   ├── run_pipeline.py
-│   ├── generate_labels.py
-│   └── README.md
+│   ├── generate_labels.py   # Placeholder/Helper for generating labeling input
+│   └── README.md            # README for scripts directory
 ├── docs/                    # Project documentation (e.g., Sphinx docs)
 │   └── README.md
-├── data/                    # Data storage (raw, processed)
-│   ├── raw/                 # Original, immutable raw data
-│   ├── processed/           # Transformed, cleaned, or feature-engineered data
+├── data/                    # Data storage (raw, processed, labeled)
+│   ├── raw/                 # Original, immutable raw data (e.g., telegram_data.csv)
+│   ├── processed/           # Transformed, cleaned, or feature-engineered data (e.g., preprocessed_telegram_data.csv)
+│   ├── labeled/             # Manually labeled datasets for NER training (e.g., 01_labeled_telegram_product_price_location.txt)
 │   └── README.md
 ├── config/                  # Configuration files
 │   ├── __init__.py
-│   └── settings.py
+│   ├── settings.py
+│   └── channels_to_crawl.txt # List of Telegram channels to scrape
 └── examples/                # Example usage of the project components
     └── README.md
 
