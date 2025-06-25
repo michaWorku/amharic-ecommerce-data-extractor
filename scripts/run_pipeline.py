@@ -73,9 +73,10 @@ def ingest_zipped_data_stage(zip_file_name: str = 'telegram_data.zip'):
 
 def preprocess_data_stage():
     """Executes the data preprocessing stage."""
+    
     logger.info("Starting data preprocessing stage...")
     # Prioritize merged CSV if it exists, otherwise use raw_csv_path
-    input_csv_path = MERGED_CSV_PATH if os.path.exists(MERGED_CSV_PATH) else RAW_CSV_PATH
+    input_csv_path = RAW_CSV_PATH # MERGED_CSV_PATH if os.path.exists(MERGED_CSV_PATH) else RAW_CSV_PATH
 
     if not os.path.exists(input_csv_path):
         logger.error(f"Input data CSV not found at '{input_csv_path}'. Please run 'ingest_data' or 'ingest_zipped_data' first.")
