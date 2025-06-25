@@ -1,0 +1,15 @@
+Project Overview
+================
+
+This project delivers a robust FinTech solution designed to transform unstructured e-commerce text data from Amharic Telegram channels into structured, machine-readable information. By leveraging advanced Natural Language Processing (NLP) techniques, particularly fine-tuned Named Entity Recognition (NER) models based on Large Language Models (LLMs), the system accurately extracts key business entities such as **product names, prices, locations, and contact information**. This structured data is then used to populate a centralized database and, critically, to develop a comprehensive "Vendor Scorecard" for FinTech micro-lending assessment.
+
+The ultimate goal is to provide EthioMart with a data-driven, quantifiable view of vendor activity, engagement, and market standing. This enables informed decision-making for potential loan offerings to active and promising e-commerce businesses operating on Telegram, thereby reducing lending risk and optimizing financial support.
+
+**Key Features:**
+
+* **Telegram Data Ingestion:** Programmatic and efficient scraping of raw message data (text and associated metadata like views, dates, channel information) from selected Amharic e-commerce Telegram channels. Includes detailed summary statistics for scraped data quality and volume per channel.
+* **Amharic Text Preprocessing:** A modular and robust pipeline for cleaning, normalizing, and standardizing raw Amharic text data. This includes Unicode normalization, character and numeral mapping, removal of noise (URLs, mentions, hashtags, emojis), punctuation standardization, whitespace normalization, and the generation of a dedicated ``tokens`` column for downstream NLP tasks. Provides comprehensive summary statistics on preprocessing effectiveness and data completeness.
+* **Named Entity Recognition (NER):** Fine-tuning state-of-the-art transformer-based LLMs (e.g., XLM-RoBERTa, mBERT) to accurately identify ``Product``, ``Price``, ``Location``, and ``Contact Info`` entities in Amharic e-commerce messages.
+* **Model Comparison & Selection:** Rigorous evaluation and comparison of multiple fine-tuned NER models based on performance metrics (F1-score, Precision, Recall), demonstrating ``xlm-roberta-base`` as the superior choice for this specific task.
+* **Vendor Performance Scorecard Generation:** A sophisticated analytics engine that combines extracted entities with Telegram post metadata (views, timestamps, channel/vendor name) to calculate key performance indicators (KPIs) such as posting frequency, average views per post, average price point, and top-performing products. These KPIs are then aggregated into a weighted **"Lending Score"** for each vendor, providing actionable insights for micro-lending decisions.
+* **Model Interpretability (Exploration):** Preliminary application of SHAP (SHapley Additive exPlanations) and LIME (Local Interpretable Model-agnostic Explanations) to understand feature contributions and local predictions of the NER model, building trust and transparency.

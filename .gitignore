@@ -170,3 +170,5 @@ logs/
 *.temp
 
 scraping_session.session
+
+/docs/build/
