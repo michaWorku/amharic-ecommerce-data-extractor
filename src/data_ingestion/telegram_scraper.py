@@ -1,7 +1,6 @@
 import asyncio
 import csv
 import os
-from datetime import datetime
 from telethon import TelegramClient
 from telethon.errors import SessionPasswordNeededError
 from telethon.tl.types import MessageMediaPhoto, MessageMediaDocument, Channel
