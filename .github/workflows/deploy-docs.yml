@@ -1,0 +1,53 @@
+# This workflow is for deploying Sphinx documentation to GitHub Pages.
+
+name: Deploy Sphinx Docs to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main # Trigger on pushes to the 'main' branch (or your default branch)
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+
+# Permissions for GitHub Pages deployment
+permissions:
+  contents: write # To push the build output to gh-pages branch
+  pages: write    # To deploy to GitHub Pages
+  id-token: write # Needed for OIDC authentication by GitHub Pages
+
+# Allow one concurrent deployment
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build_and_deploy:
+    name: Build and Deploy Sphinx Docs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9' # Or your desired Python version (e.g., 3.10, 3.11)
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt sphinx sphinx-rtd-theme furo myst-parser
+
+      - name: Build Sphinx Documentation
+        run: |
+          cd docs # Navigate to your Sphinx docs directory
+          make html
+        env:
+          PYTHONPATH: ${{ github.workspace }} # Add project root to PYTHONPATH for Sphinx autodoc
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./docs/build/html # IMPORTANT: Point to the Sphinx HTML build output
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4 # The official GitHub Pages deploy action
