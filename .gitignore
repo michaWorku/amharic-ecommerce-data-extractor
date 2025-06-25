@@ -157,9 +157,9 @@ cython_debug/
 # !data/raw/.keep
 # data/processed/*
 # !data/processed/.keep
-data/raw/
+data/raw/*
 data/raw/scraped
-data/processed
+data/processed/*
 
 # Logs
 logs/
@@ -169,5 +169,4 @@ logs/
 *.tmp
 *.temp
 
-scraping_session.session
 scraping_session.session

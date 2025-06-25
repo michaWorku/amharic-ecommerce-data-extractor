@@ -163,7 +163,6 @@ async def main(message_limit: int = None):
         try:
             with open(CHANNELS_LIST_PATH, 'r', encoding='utf-8') as channels_file:
                 reader = csv.reader(channels_file)
-                next(reader) # Skip header row
                 for row in reader:
                     if row and row[0].strip(): # Ensure row is not empty AND channel username is not empty
                         channels_to_scrape.append(row[0].strip())

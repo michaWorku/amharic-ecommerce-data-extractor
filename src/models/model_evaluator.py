@@ -12,12 +12,13 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Ensure src/utils is in the Python path to import conll_parser
-project_root = Path(__file__).resolve().parents[2] # Adjust this if your structure differs
-sys.path.insert(0, str(project_root))
-sys.path.insert(0, str(project_root / 'src' / 'utils'))
+# Adjust sys.path to allow imports from src
+# Ensure project_root is the directory containing 'src'
+project_root = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(project_root)) # This adds the project root to path
 
-from conll_parser import read_conll # For evaluation on labeled data if needed
+# Corrected import: Now explicitly import from src.utils.conll_parser
+from src.utils.conll_parser import read_conll # For evaluation on labeled data if needed
 from transformers import AutoTokenizer, AutoModelForTokenClassification, pipeline, DataCollatorForTokenClassification
 from datasets import Dataset # For creating Hugging Face Datasets
 
@@ -76,6 +77,7 @@ class NERModelEvaluator:
                 self.label_to_id = {'O': 0}
                 logger.warning("Defaulting to a minimal label set. This may cause errors.")
 
+            # Specify device for pipeline explicitly
             self.ner_pipeline = pipeline("ner", model=self.model, tokenizer=self.tokenizer, aggregation_strategy="simple", device=0 if torch.cuda.is_available() else -1)
             logger.info("NER pipeline initialized successfully.")
         except Exception as e:
@@ -104,14 +106,19 @@ class NERModelEvaluator:
 
         try:
             df = pd.read_csv(preprocessed_data_path)
-            if 'preprocessed_text' not in df.columns or 'tokens' not in df.columns:
-                logger.error("Input CSV must contain 'preprocessed_text' and 'tokens' columns.")
-                return
-            df['tokens'] = df['tokens'].apply(lambda x: eval(x) if pd.notna(x) else []) # Convert string representation of list back to list
+            # Ensure 'tokens' column is read as a list, not string representation of list
+            if 'tokens' in df.columns:
+                df['tokens'] = df['tokens'].apply(lambda x: eval(x) if pd.notna(x) and x.startswith('[') else [])
+            else:
+                logger.warning("'tokens' column not found. Falling back to splitting 'preprocessed_text'.")
+                df['tokens'] = df['preprocessed_text'].fillna('').apply(lambda x: x.split())
+
             df['preprocessed_text'] = df['preprocessed_text'].fillna('') # Ensure no NaN texts
 
         except Exception as e:
             logger.error(f"Error loading or parsing preprocessed data: {e}")
+            import traceback
+            traceback.print_exc()
             return
 
         if df.empty:
@@ -127,37 +134,70 @@ class NERModelEvaluator:
             if not sentence_text.strip(): # Skip empty or whitespace-only texts
                 continue
 
+            # Ensure sentence_text is not empty after strip() for pipeline
+            if not sentence_text.strip():
+                logger.debug(f"Skipping empty preprocessed_text for message_id {row.get('message_id', idx)}")
+                continue
+
             prediction = self.ner_pipeline(sentence_text)
 
             # Align predicted entities with original tokens
             predicted_labels_aligned = ["O"] * len(original_tokens)
-            current_char_index = 0
-            sentence_text_for_char_find = " ".join(original_tokens)
+            
+            # Simple greedy alignment: find which tokens overlap with predicted spans
+            # This can be refined for more precise token-level alignment if needed.
+            char_to_token_map = []
+            current_char_idx = 0
+            for token_idx, token in enumerate(original_tokens):
+                # Ensure the token has a valid starting position in the sentence_text
+                # If there are multiple spaces, find() might be tricky. Using regex might be more robust
+                # For simplicity now, assume single space separation from tokenization
+                token_start_in_sentence = sentence_text.find(token, current_char_idx)
+                if token_start_in_sentence == -1: # Fallback if token not found from current_char_idx
+                    token_start_in_sentence = sentence_text.find(token)
+                    if token_start_in_sentence == -1: # If still not found, skip this token in char map
+                        continue
+                
+                token_end_in_sentence = token_start_in_sentence + len(token)
+                for char_idx in range(token_start_in_sentence, token_end_in_sentence):
+                    char_to_token_map.append(token_idx)
+                
+                # Advance current_char_idx past this token and any following space
+                current_char_idx = token_end_in_sentence
+                if current_char_idx < len(sentence_text) and sentence_text[current_char_idx] == ' ':
+                    current_char_idx += 1 # Account for the space
 
+            for pred in prediction:
+                pred_start = pred['start']
+                pred_end = pred['end']
+                pred_label = pred['entity_group']
+
+                # Find tokens that fully or partially overlap with the prediction span
+                for char_idx in range(pred_start, pred_end):
+                    if char_idx < len(char_to_token_map):
+                        token_idx = char_to_token_map[char_idx]
+                        # Assign B- tag to the first token of the entity, I- to subsequent
+                        if pred['start'] <= char_idx < pred['end']: # Ensure char_idx is within prediction span
+                            if predicted_labels_aligned[token_idx] == "O": # Only assign if not already set by a prior (overlapping) prediction
+                                if char_idx == pred_start or (token_idx > 0 and char_to_token_map[char_idx-1] != token_idx): # Check if it's the start of the entity or a new token in the entity
+                                    predicted_labels_aligned[token_idx] = f"B-{pred_label}"
+                                else:
+                                    predicted_labels_aligned[token_idx] = f"I-{pred_label}"
+                            elif predicted_labels_aligned[token_idx].startswith("B-") and pred_label in predicted_labels_aligned[token_idx]:
+                                # If already a B- for the same entity type, it means this token is part of a multi-token B-
+                                pass # Keep the B-
+                            elif predicted_labels_aligned[token_idx].startswith("I-") and pred_label in predicted_labels_aligned[token_idx]:
+                                # If already an I- for the same entity type
+                                pass # Keep the I-
+                            else: # If existing label is different (e.g., O or another entity type), prioritize the new prediction
+                                if char_idx == pred_start or (token_idx > 0 and char_to_token_map[char_idx-1] != token_idx): # Check if it's the start of the entity or a new token in the entity
+                                    predicted_labels_aligned[token_idx] = f"B-{pred_label}"
+                                else:
+                                    predicted_labels_aligned[token_idx] = f"I-{pred_label}"
+                
+
+            # Iterate through original tokens to write to CSV
             for i, token in enumerate(original_tokens):
-                token_start_char = sentence_text_for_char_find.find(token, current_char_index)
-
-                if token_start_char != -1:
-                    token_end_char = token_start_char + len(token)
-
-                    for pred in prediction:
-                        overlap = max(0, min(token_end_char, pred['end']) - max(token_start_char, pred['start']))
-
-                        if overlap > 0:
-                            # Prioritize B- tags if multiple overlaps, otherwise just assign
-                            # This is a simplification; more robust logic might be needed for complex cases
-                            current_pred_label = pred['entity_group']
-                            if predicted_labels_aligned[i] == "O":
-                                predicted_labels_aligned[i] = current_pred_label
-                            elif current_pred_label.startswith("B-") and not predicted_labels_aligned[i].startswith("B-"):
-                                predicted_labels_aligned[i] = current_pred_label
-                            elif current_pred_label.startswith("I-") and predicted_labels_aligned[i] == "O":
-                                predicted_labels_aligned[i] = current_pred_label
-
-                    current_char_index = token_end_char
-                    if i < len(original_tokens) - 1:
-                        current_char_index += 1 # Account for the space between tokens
-
                 csv_data.append({
                     'message_id': row.get('message_id', idx), # Use actual message_id if available
                     'channel_username': row.get('channel_username', 'N/A'),
@@ -174,11 +214,13 @@ class NERModelEvaluator:
                 'preprocessed_text': ''
             })
 
-        # Remove the last blank row if present
+        # Remove the last blank row if present (prevents an extra blank line at EOF)
         if csv_data and csv_data[-1]['token'] == '' and csv_data[-1]['predicted_label'] == '':
             csv_data.pop()
 
         predictions_df = pd.DataFrame(csv_data)
+        # Ensure output directory exists before saving
+        os.makedirs(Path(output_predictions_csv_path).parent, exist_ok=True)
         predictions_df.to_csv(output_predictions_csv_path, index=False)
         logger.info(f"Predicted labels saved to {output_predictions_csv_path}")
         logger.info("You can now manually review and correct this CSV to create more labeled data.")
@@ -217,23 +259,42 @@ class NERModelEvaluator:
             true_labels = [self.id_to_label[tag_id] for tag_id in true_labels_ids]
             sentence_text = " ".join(original_tokens)
 
+            # Skip empty sentences
+            if not sentence_text.strip():
+                continue
+
             prediction = self.ner_pipeline(sentence_text)
 
+            # Align predicted entities with original tokens
             predicted_labels_aligned = ["O"] * len(original_tokens)
-            current_char_index = 0
-            sentence_text_for_char_find = " ".join(original_tokens)
+            char_to_token_map = []
+            current_char_idx = 0
+            for token_idx, token in enumerate(original_tokens):
+                token_start_in_sentence = sentence_text.find(token, current_char_idx)
+                if token_start_in_sentence == -1:
+                    token_start_in_sentence = sentence_text.find(token)
+                    if token_start_in_sentence == -1:
+                        continue
+                token_end_in_sentence = token_start_in_sentence + len(token)
+                for char_idx in range(token_start_in_sentence, token_end_in_sentence):
+                    char_to_token_map.append(token_idx)
+                current_char_idx = token_end_in_sentence
+                if current_char_idx < len(sentence_text) and sentence_text[current_char_idx] == ' ':
+                    current_char_idx += 1
 
-            for i, token in enumerate(original_tokens):
-                token_start_char = sentence_text_for_char_find.find(token, current_char_index)
-                if token_start_char != -1:
-                    token_end_char = token_start_char + len(token)
-                    for pred in prediction:
-                        overlap = max(0, min(token_end_char, pred['end']) - max(token_start_char, pred['start']))
-                        if overlap > 0:
-                            predicted_labels_aligned[i] = pred['entity_group']
-                    current_char_index = token_end_char
-                    if i < len(original_tokens) - 1:
-                        current_char_index += 1
+            for pred in prediction:
+                pred_start = pred['start']
+                pred_end = pred['end']
+                pred_label = pred['entity_group']
+
+                for char_idx in range(pred_start, pred_end):
+                    if char_idx < len(char_to_token_map):
+                        token_idx = char_to_token_map[char_idx]
+                        if char_idx == pred_start or (token_idx > 0 and char_to_token_map[char_idx-1] != token_idx):
+                            predicted_labels_aligned[token_idx] = f"B-{pred_label}"
+                        else:
+                            predicted_labels_aligned[token_idx] = f"I-{pred_label}"
+
 
             mismatches = []
             has_mismatch = False
@@ -297,6 +358,7 @@ class NERModelEvaluator:
         background_indices = random.sample(range(len(tokenized_background)), num_background_samples)
         background_dataset_raw = [tokenized_background[i] for i in background_indices]
 
+        # Use DataCollatorForTokenClassification
         data_collator = DataCollatorForTokenClassification(tokenizer=self.tokenizer)
         background_dict_padded = data_collator(background_dataset_raw)
 
@@ -304,6 +366,7 @@ class NERModelEvaluator:
             logger.warning("Empty background dataset after collation. Skipping SHAP.")
             return
 
+        # Stack input_ids and attention_mask for SHAP explainer input
         background_input_ids_np_shap = background_dict_padded['input_ids'].cpu().numpy()
         background_attention_mask_np_shap = background_dict_padded['attention_mask'].cpu().numpy()
         background_data_stacked = np.stack([background_input_ids_np_shap, background_attention_mask_np_shap], axis=1)
@@ -334,7 +397,7 @@ class NERModelEvaluator:
             example_dict_for_collation = {
                 'input_ids': input_ids_raw,
                 'attention_mask': attention_mask_raw,
-                'labels': [-100] * len(input_ids_raw)
+                'labels': [-100] * len(input_ids_raw) # Labels needed by data collator, but -100 means ignore
             }
             example_dict_padded = data_collator([example_dict_for_collation])
             input_ids_padded = example_dict_padded['input_ids'][0].tolist()
@@ -383,27 +446,52 @@ class NERModelEvaluator:
                     outputs = self.model(input_ids=input_ids_tensor, attention_mask=attention_mask_tensor)
                 logits = outputs.logits.detach().cpu().numpy()
 
+                # Ensure target_tokenized_index is within bounds of the logits for the current batch
                 if target_tokenized_index >= logits.shape[1]:
+                    # This can happen if the sequence length changes due to padding/truncation
+                    # For SHAP, the input sequence length is fixed by the background dataset's padding.
+                    # This condition might indicate an issue with how target_tokenized_index is determined,
+                    # or an edge case with very short sequences where the target token is truncated.
                     logger.warning(f"target_tokenized_index ({target_tokenized_index}) out of bounds for batch shape {logits.shape}. Returning zeros.")
-                    return np.zeros(logits.shape[0])
-                return logits[:, target_tokenized_index, target_label_id]
+                    return np.zeros((logits.shape[0], len(self.id_to_label))) # Return probabilities for all labels
+                
+                # SHAP needs probabilities for all classes at the target token position
+                # Assuming outputs.logits is [batch_size, sequence_length, num_labels]
+                # Apply softmax to get probabilities
+                probabilities = torch.softmax(torch.tensor(logits), dim=-1).cpu().numpy()
+                return probabilities[:, target_tokenized_index, :] # Return probabilities for all labels at the target token
 
+            # Initialize Explainer, specifying output type if model outputs logits
+            # For KernelExplainer, the model_to_explain needs to output class probabilities or raw outputs
+            # We adjusted predict_fn_for_shap to return probabilities for all labels for target token.
             explainer = shap.KernelExplainer(predict_fn_for_shap, background_data_stacked)
             logger.info("Calculating SHAP values (this may take some time)...")
             try:
                 example_data_stacked = np.stack([np.array(input_ids_padded), np.array(attention_mask_padded)], axis=0)[np.newaxis, :, :]
-                shap_values = explainer.shap_values(example_data_stacked, silent=True)
-                shap_values_array = shap_values[0] # Assuming single output
-                shap_values_flat = shap_values_array[0, :]
+                # shap_values will be a list of arrays, one for each output class
+                # shap_values[target_label_id] gives values for the target label
+                shap_values = explainer.shap_values(example_data_stacked)
+                
+                # Check if shap_values is a list (for multi-output models) and get the relevant one
+                if isinstance(shap_values, list):
+                    shap_values_for_target_label = shap_values[target_label_id]
+                else:
+                    # If it's a single array, it implies a single-output model or explainer configured differently
+                    shap_values_for_target_label = shap_values
+                
+                shap_values_flat = shap_values_for_target_label[0, :] # Extract values for the single example
 
                 base_value = explainer.expected_value
+                if isinstance(base_value, np.ndarray): # For multi-output, expected_value is array
+                    base_value = base_value[target_label_id] # Get base value for the specific target label
+
                 logger.info("SHAP calculation complete.")
 
                 logger.info(f"\nSHAP Visualization for Example {example_count + 1} (Original Index: {example_case['example_index']}):")
                 shap.initjs() # Initialize JavaScript for SHAP plots
-                print(shap.force_plot(base_value, shap_values_flat, tokenized_tokens_padded, matplotlib=False, show=False))
+                display(shap.force_plot(base_value, shap_values_flat, tokenized_tokens_padded, matplotlib=False, show=False))
                 # shap.waterfall_plot is also good for single examples
-                # (shap.waterfall_plot(shap.Explanation(values=shap_values_flat, base_values=base_value, data=tokenized_tokens_padded, feature_names=tokenized_tokens_padded)))
+                # display(shap.waterfall_plot(shap.Explanation(values=shap_values_flat, base_values=base_value, data=tokenized_tokens_padded, feature_names=tokenized_tokens_padded)))
 
                 logger.info("Interpretation:")
                 logger.info(f"- Explaining prediction for token '{original_tokens[target_original_token_index]}' towards label '{target_label_name}'.")
@@ -423,7 +511,7 @@ class NERModelEvaluator:
             return
 
         logger.info("\n--- Starting LIME Analysis ---")
-        class_names = list(self.label_to_id.keys())
+        class_names = list(self.id_to_label.values()) # Use values from id_to_label
         explainer = LimeTextExplainer(class_names=class_names)
 
         def predictor_for_target_token(texts: list, target_original_token_index: int):
@@ -440,6 +528,7 @@ class NERModelEvaluator:
                 word_ids = tokenized_input.word_ids(batch_index=0)
                 target_tokenized_index = None
                 if word_ids:
+                    # Find the corresponding tokenized index for the target original token
                     for tokenized_idx, word_idx in enumerate(word_ids):
                          if word_idx is not None and word_idx == target_original_token_index:
                              target_tokenized_index = tokenized_idx
@@ -500,7 +589,13 @@ class NERModelEvaluator:
                     logger.warning(f"Example {example_case['example_index']} is empty. Skipping LIME.")
                     continue
 
-            target_label_id_for_lime = self.label_to_id[target_label_name]
+            # Ensure target_label_name is in class_names and get its index
+            if target_label_name not in class_names:
+                logger.warning(f"Target label '{target_label_name}' not in class names. Falling back to 'O' label for LIME.")
+                target_label_name = "O"
+            
+            target_label_id_for_lime = class_names.index(target_label_name) # Get index from class_names list
+
             logger.info(f"Explaining prediction for token '{original_tokens[target_original_token_index]}' towards label '{target_label_name}' (ID: {target_label_id_for_lime}).")
 
             try:
@@ -511,15 +606,12 @@ class NERModelEvaluator:
                     num_features=10,
                 )
                 logger.info(f"\nLIME Visualization for Example {example_count + 1}:")
-                # print() is used for Jupyter/Colab, for script-only, this would need
-                # to be saved to HTML. In the current setup, this is run from `run_pipeline.py`
-                # which doesn't print interactive plots. A more advanced setup would
-                # involve saving these to HTML files.
+                # LIME visualizations are typically interactive HTML. For a script, you might want to save them.
                 # For now, we'll just log that it's being generated.
                 logger.info("LIME explanation generated (interactive visualization typically shown in notebooks).")
-                # You might uncomment the line below if you run this in a Jupyter environment directly
-                # from IPython.print import print # Import here to avoid circular dependency
-                # print(explanation.show_in_notebook(text=True))
+                # If you are running this in an environment that can display HTML:
+                # from IPython.display import display, HTML
+                # display(HTML(explanation.as_html()))
 
 
                 logger.info("Interpretation:")
@@ -536,13 +628,9 @@ class NERModelEvaluator:
 
     def _align_labels_with_tokens_for_shap(self, examples):
         """Helper for tokenizing and aligning labels for SHAP background dataset."""
-        # This is a simplified version just to get tokenized input_ids and attention_mask
-        # for a "background" dataset. Labels are not strictly needed here as SHAP operates
-        # on logits. We just need to make sure the data format is consistent.
         tokenized_inputs = self.tokenizer(
             examples["tokens"], is_split_into_words=True, truncation=True
         )
-        # Dummy labels for alignment, will be ignored by SHAP's predict_fn
         tokenized_inputs["labels"] = [[-100] * len(ids) for ids in tokenized_inputs["input_ids"]]
         return tokenized_inputs
 
@@ -566,9 +654,9 @@ if __name__ == '__main__':
                 "Great watch for 500 birr available at Mexico"
             ],
             'tokens': [
-                ['Dell', 'laptop', 'with', '16GB', 'RAM', 'for', 'sale', 'at', 'Bole', 'road', 'price', '25000', 'ETB', 'contact', '+251912345678'],
-                ['New', 'Phone', 'for', 'sale', '2500', 'Br', 'contact', '+251911123456'],
-                ['Great', 'watch', 'for', '500', 'birr', 'available', 'at', 'Mexico']
+                "['Dell', 'laptop', 'with', '16GB', 'RAM', 'for', 'sale', 'at', 'Bole', 'road', 'price', '25000', 'ETB', 'contact', '+251912345678']",
+                "['New', 'Phone', 'for', 'sale', '2500', 'Br', 'contact', '+251911123456']",
+                "['Great', 'watch', 'for', '500', 'birr', 'available', 'at', 'Mexico']"
             ]
         }
         dummy_df = pd.DataFrame(dummy_df_data)
@@ -583,7 +671,9 @@ if __name__ == '__main__':
             [{'text': 'New', 'label': 'O'}, {'text': 'Phone', 'label': 'B-PRODUCT'}, {'text': 'for', 'label': 'O'}, {'text': 'sale', 'label': 'O'}, {'text': '2500', 'label': 'B-PRICE'}, {'text': 'Br', 'label': 'I-PRICE'}, {'text': 'contact', 'label': 'O'}, {'text': '+251911123456', 'label': 'B-CONTACT_INFO'}, {'text': '.', 'label': 'O'}]
         ]
         os.makedirs(LABELED_DATA_FOR_EVAL_FOR_INTERP.parent, exist_ok=True)
-        read_conll(str(LABELED_DATA_FOR_EVAL_FOR_INTERP)) # Use read_conll to also write the dummy data
+        # Use write_conll from src.utils.conll_parser for consistency
+        from src.utils.conll_parser import write_conll as write_conll_for_demo
+        write_conll_for_demo(dummy_labeled_data, str(LABELED_DATA_FOR_EVAL_FOR_INTERP))
 
     # Initialize evaluator
     evaluator = NERModelEvaluator(str(MODEL_DIR_FOR_EVALUATOR))
