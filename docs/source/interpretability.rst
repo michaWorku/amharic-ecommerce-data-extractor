@@ -30,15 +30,34 @@ SHAP values help us understand the contribution of each word (or token) to a spe
 LIME provides local explanations by perturbing the input and observing changes in the model's prediction. This helps to highlight which parts of the input text are most important for a particular prediction.
 
 * **Visualization Placeholder (LIME HTML Output):**
-    .. image:: ../_static/lime_explanation_placeholder.png
+    .. image:: ../_static/lime_explanation_example_1.png
        :alt: LIME Explanation Placeholder
        :width: 800px
        :align: center
 
 * **Interpretation:**
-    * Green highlighted words positively contribute to the predicted label for a specific token.
-    * Red highlighted words negatively contribute.
+    * The visualization shows the words that contribute most to the model predicting the label 'O' for the token 'Rechargeable'.
+    * Green words contribute positively (increase probability of the label at the target token).
+    * Red words contribute negatively (decrease probability of the label at the target token).
+    * The intensity of the color indicates the strength of the contribution.
+    * Analyze which words in the surrounding context most influence the model's decision for the target token's label.
+
     * LIME's visualization shows how the model locally weighs different words in the sentence to arrive at a particular label for a specific token, even for words that are not explicitly entities themselves but provide crucial context.
+
+* **Visualization Placeholder (LIME HTML Output):**
+    .. image:: ../_static/lime_explanation_example_2.png
+       :alt: LIME Explanation Placeholder
+       :width: 800px
+       :align: center
+
+* **Interpretation:**
+    * The visualization shows the words that contribute most to the model predicting the label 'O' for the token 'ቦታዎች'.
+    * Green words contribute positively (increase probability of the label at the target token).
+    * Red words contribute negatively (decrease probability of the label at the target token).
+    * The intensity of the color indicates the strength of the contribution.
+    * Analyze which words in the surrounding context most influence the model's decision for the target token's label.
+    * LIME's visualization shows how the model locally weighs different words in the sentence to arrive at a particular label for a specific token, even for words that are not explicitly entities themselves but provide crucial context.
+
 
 ## Challenges in Interpretability
 
