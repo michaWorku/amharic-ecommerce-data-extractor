@@ -3,23 +3,34 @@ import sys
 import os
 from pathlib import Path
 import logging
+import asyncio # Import asyncio for running async scraper
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Add the project root to the Python path
-project_root = Path(__file__).resolve().parents[1] # Adjust if your structure differs
+# Add the project root to the Python path.
+# This makes 'src' a top-level package for imports like 'src.data_ingestion'.
+project_root = Path(__file__).resolve().parents[1] 
 sys.path.insert(0, str(project_root))
+
+# Apply nest_asyncio to allow nested event loops (useful if script is run from interactive environments)
+try:
+    import nest_asyncio
+    nest_asyncio.apply()
+except ImportError:
+    logger.warning("nest_asyncio not found. If running from Jupyter/IPython, you might encounter RuntimeError.")
+
 
 # Import modules from src
 try:
-    from src.data_ingestion.telegram_scraper import TelegramScraper
+    from src.data_ingestion.telegram_scraper import main as run_scraper_main
     from src.data_preprocessing.text_preprocessor import preprocess_dataframe
-    from src.models.ner_trainer import train_ner_model 
-    from src.models.model_evaluator import NERModelEvaluator 
-    from src.analytics.vendor_scorecard import VendorScorecardGenerator 
+    from src.models.ner_trainer import train_ner_model
+    from src.models.model_evaluator import NERModelEvaluator
+    from src.analytics.vendor_scorecard import VendorScorecardGenerator
     import pandas as pd
+    from src.utils.conll_parser import read_conll # Import read_conll for evaluator stage
 except ImportError as e:
     logger.error(f"Failed to import a necessary module. Ensure all dependencies are installed and "
                  f"the project structure is correct. Error: {e}")
@@ -43,6 +54,7 @@ for path in [RAW_DATA_PATH.parent, PREPROCESSED_DATA_PATH.parent, LABELED_DATA_P
 # Create a dummy channels file if it doesn't exist for initial setup ease
 if not CHANNELS_FILE.exists():
     with open(CHANNELS_FILE, 'w', encoding='utf-8') as f:
+        f.write("channel_username\n") # Header for consistency with CSV reader (if used elsewhere)
         f.write("EthioMarketPlace\n")
         f.write("shega_shop_1\n")
         f.write("Ethio_online_store\n")
@@ -50,15 +62,17 @@ if not CHANNELS_FILE.exists():
 
 def ingest_data_stage(limit: int):
     """
-    Ingests data from Telegram channels using the TelegramScraper.
+    Ingests data from Telegram channels using the TelegramScraper's main function.
     """
     logger.info(f"--- Starting Data Ingestion Stage (Limit: {limit}) ---")
-    scraper = TelegramScraper(
-        api_id=os.getenv('TELEGRAM_API_ID'),
-        api_hash=os.getenv('TELEGRAM_API_HASH'),
-        channels_file_path=str(CHANNELS_FILE)
-    )
-    scraper.scrape_channels(limit=limit)
+    try:
+        # Call the asynchronous main function from telegram_scraper
+        asyncio.run(run_scraper_main(message_limit=limit))
+    except Exception as e:
+        logger.error(f"Error during data ingestion: {e}")
+        import traceback
+        traceback.print_exc() # Print full traceback for debugging
+        return
     logger.info("Data Ingestion Stage Complete.")
 
 def preprocess_data_stage():
@@ -71,6 +85,7 @@ def preprocess_data_stage():
         return
 
     try:
+        # Use low_memory=False to avoid DtypeWarning on mixed types if any
         df_raw = pd.read_csv(RAW_DATA_PATH, low_memory=False)
         # Ensure 'message_text' column is handled as string for preprocessing
         df_raw['message_text'] = df_raw['message_text'].astype(str).fillna('')
@@ -78,10 +93,17 @@ def preprocess_data_stage():
         # Ensure 'views' column is numeric and fill NaN with 0 for consistency
         df_processed['views'] = pd.to_numeric(df_processed['views'], errors='coerce').fillna(0).astype(int)
         df_processed['message_date'] = pd.to_datetime(df_processed['message_date'], errors='coerce')
+        
+        # Convert list-like 'tokens' column to string representation for CSV saving
+        if 'tokens' in df_processed.columns:
+            df_processed['tokens'] = df_processed['tokens'].apply(lambda x: str(x))
+
         df_processed.to_csv(PREPROCESSED_DATA_PATH, index=False)
         logger.info(f"Preprocessed data saved to {PREPROCESSED_DATA_PATH}")
     except Exception as e:
         logger.error(f"Error during data preprocessing: {e}")
+        import traceback
+        traceback.print_exc()
         return
     logger.info("Data Preprocessing Stage Complete.")
 
@@ -92,17 +114,23 @@ def fine_tune_ner_stage(model_name: str, epochs: int, batch_size: int):
     logger.info(f"--- Starting NER Model Fine-tuning Stage (Model: {model_name}) ---")
     if not LABELED_DATA_PATH.exists():
         logger.error(f"Labeled data not found at {LABELED_DATA_PATH}. Please ensure you have a labeled dataset for fine-tuning.")
-        logger.info("For demonstration, you can run `python src/models/ner_trainer.py` to create dummy labeled data and a test model.")
+        logger.info("For demonstration purposes, you can run `python src/models/ner_trainer.py` directly to create dummy labeled data and a test model.")
         return
 
-    train_ner_model(
-        labeled_data_path=str(LABELED_DATA_PATH),
-        output_model_dir=str(FINE_TUNED_MODEL_DIR),
-        model_name=model_name,
-        num_train_epochs=epochs,
-        per_device_train_batch_size=batch_size,
-        per_device_eval_batch_size=batch_size,
-    )
+    try:
+        train_ner_model(
+            labeled_data_path=str(LABELED_DATA_PATH),
+            output_model_dir=str(FINE_TUNED_MODEL_DIR),
+            model_name=model_name,
+            num_train_epochs=epochs,
+            per_device_train_batch_size=batch_size,
+            per_device_eval_batch_size=batch_size,
+        )
+    except Exception as e:
+        logger.error(f"Error during NER model fine-tuning: {e}")
+        import traceback
+        traceback.print_exc()
+        return
     logger.info("NER Model Fine-tuning Stage Complete.")
 
 def evaluate_ner_stage():
@@ -116,6 +144,11 @@ def evaluate_ner_stage():
 
     evaluator = NERModelEvaluator(model_dir=str(FINE_TUNED_MODEL_DIR))
 
+    # Check if evaluator was initialized successfully before proceeding
+    if not evaluator.ner_pipeline:
+        logger.error("NERModelEvaluator could not be initialized due to missing model or tokenizer. Skipping evaluation.")
+        return
+
     # Perform inference on preprocessed data and save
     if PREPROCESSED_DATA_PATH.exists():
         evaluator.predict_and_save_entities(
@@ -126,41 +159,47 @@ def evaluate_ner_stage():
         logger.warning(f"Preprocessed data not found at {PREPROCESSED_DATA_PATH}. Skipping entity prediction on full dataset.")
 
     # Perform interpretability analysis (requires a labeled evaluation dataset)
-    # Re-use read_conll from conll_parser
-    try:
-        from src.utils.conll_parser import read_conll as read_conll_for_dataset
-        from datasets import Dataset
-        raw_data_for_eval_dataset = read_conll_for_dataset(str(LABELED_DATA_PATH))
-        if raw_data_for_eval_dataset:
-            # Need to derive id_to_label and label_to_id from the full labeled dataset
-            all_labels_for_eval = sorted(list(set(item['label'] for sentence in raw_data_for_eval_dataset for item in sentence)))
-            label_to_id_for_eval = {label: i for i, label in enumerate(all_labels_for_eval)}
-            id_to_label_for_eval = {i: label for label, i in label_to_id_for_eval.items()}
+    if LABELED_DATA_PATH.exists():
+        try:
+            # Read labeled data for creating evaluation dataset for interpretability
+            raw_data_for_eval_dataset = read_conll(str(LABELED_DATA_PATH))
+            if raw_data_for_eval_dataset:
+                # Need to derive id_to_label and label_to_id from the full labeled dataset
+                all_labels_for_eval = sorted(list(set(item['label'] for sentence in raw_data_for_eval_dataset for item in sentence)))
+                label_to_id_for_eval = {label: i for i, label in enumerate(all_labels_for_eval)}
+                id_to_label_for_eval = {i: label for label, i in label_to_id_for_eval.items()}
 
-            valid_tokens_for_eval = []
-            valid_ner_tags_for_eval = []
-            for sentence_data in raw_data_for_eval_dataset:
-                tokens_sentence = [item['text'] for item in sentence_data]
-                ner_tags_sentence = [label_to_id_for_eval[item['label']] for item in sentence_data]
-                if tokens_sentence and ner_tags_sentence:
-                    valid_tokens_for_eval.append(tokens_sentence)
-                    valid_ner_tags_for_eval.append(ner_tags_sentence)
+                # Filter out sentences that might be empty after tokenization/alignment for dataset creation
+                valid_tokens_for_eval = []
+                valid_ner_tags_for_eval = []
+                for sentence_data in raw_data_for_eval_dataset:
+                    tokens_sentence = [item['text'] for item in sentence_data]
+                    ner_tags_sentence = [label_to_id_for_eval[item['label']] for item in sentence_data]
+                    if tokens_sentence and ner_tags_sentence: # Only add if both are non-empty
+                        valid_tokens_for_eval.append(tokens_sentence)
+                        valid_ner_tags_for_eval.append(ner_tags_sentence)
+                
+                if valid_tokens_for_eval: # Only create dataset if there's valid data
+                    eval_dataset_for_interp = Dataset.from_dict({"tokens": valid_tokens_for_eval, "ner_tags": valid_ner_tags_for_eval})
 
-            eval_dataset_for_interp = Dataset.from_dict({"tokens": valid_tokens_for_eval, "ner_tags": valid_ner_tags_for_eval})
+                    # Pass the correct id_to_label and label_to_id to the evaluator instance for interpretability
+                    evaluator.id_to_label = id_to_label_for_eval
+                    evaluator.label_to_id = label_to_id_for_eval
 
-            # Pass the correct id_to_label and label_to_id to the evaluator
-            evaluator.id_to_label = id_to_label_for_eval
-            evaluator.label_to_id = label_to_id_for_eval
-
-            evaluator.analyze_interpretability(eval_dataset=eval_dataset_for_interp, num_examples=5)
-        else:
-            logger.warning(f"No labeled data found at {LABELED_DATA_PATH} for interpretability analysis. Skipping.")
-    except Exception as e:
-        logger.error(f"Error preparing data for interpretability analysis: {e}")
-        import traceback
-        traceback.print_exc()
+                    evaluator.analyze_interpretability(eval_dataset=eval_dataset_for_interp, num_examples=5)
+                else:
+                    logger.warning("Labeled data parsed but resulted in empty valid token/tag lists for interpretability. Skipping.")
+            else:
+                logger.warning(f"No data found in labeled data file at {LABELED_DATA_PATH} for interpretability analysis. Skipping.")
+        except Exception as e:
+            logger.error(f"Error preparing data for interpretability analysis: {e}")
+            import traceback
+            traceback.print_exc()
+    else:
+        logger.warning(f"Skipping interpretability analysis as labeled data for evaluation set is missing at {LABELED_DATA_PATH}.")
 
     logger.info("NER Model Evaluation Stage Complete.")
+
 
 def generate_scorecards_stage():
     """
@@ -178,15 +217,27 @@ def generate_scorecards_stage():
         df_predictions = pd.read_csv(PREDICTED_LABELS_PATH, low_memory=False)
         df_preprocessed = pd.read_csv(PREPROCESSED_DATA_PATH, low_memory=False)
 
-        # Ensure correct types and handle potential NaNs from CSV read
+        # Ensure correct types and handle potential NaNs from CSV read for merging
         df_predictions['token'] = df_predictions['token'].astype(str).fillna('')
         df_predictions['predicted_label'] = df_predictions['predicted_label'].astype(str).fillna('O')
+        
+        # Ensure message_id is consistent for joining
+        df_predictions['message_id'] = pd.to_numeric(df_predictions['message_id'], errors='coerce')
+        df_preprocessed['message_id'] = pd.to_numeric(df_preprocessed['message_id'], errors='coerce')
+
+        # Drop rows with NaN message_id if they exist after conversion
+        df_predictions.dropna(subset=['message_id'], inplace=True)
+        df_preprocessed.dropna(subset=['message_id'], inplace=True)
+
         df_preprocessed['message_date'] = pd.to_datetime(df_preprocessed['message_date'], errors='coerce')
         df_preprocessed['views'] = pd.to_numeric(df_preprocessed['views'], errors='coerce').fillna(0).astype(int)
         df_preprocessed['channel_username'] = df_preprocessed['channel_username'].astype(str).fillna('unknown_channel')
 
         scorecard_generator = VendorScorecardGenerator()
         vendor_scorecard_df = scorecard_generator.generate_scorecard(df_predictions, df_preprocessed)
+        
+        # Ensure output directory exists before saving
+        os.makedirs(VENDOR_SCORECARD_PATH.parent, exist_ok=True)
         vendor_scorecard_df.to_csv(VENDOR_SCORECARD_PATH, index=False)
         logger.info(f"Vendor scorecard saved to {VENDOR_SCORECARD_PATH}")
     except Exception as e:
@@ -195,6 +246,7 @@ def generate_scorecards_stage():
         traceback.print_exc()
         return
     logger.info("Vendor Scorecard Generation Stage Complete.")
+
 
 def main():
     parser = argparse.ArgumentParser(description="Run the Amharic E-commerce Data Extractor pipeline stages.")
@@ -225,10 +277,6 @@ def main():
     elif args.stage == 'all':
         ingest_data_stage(args.limit)
         preprocess_data_stage()
-        # Note: 'all' stage for fine_tune_ner and evaluate_ner might be very time/resource intensive
-        # For a full 'all' run, consider running fine_tune_ner and evaluate_ner separately first,
-        # and only include if resources permit and you are sure labeled data is ready.
-        # For now, I'll include them sequentially, assuming necessary data (e.g., labeled data) is ready.
         fine_tune_ner_stage(args.model_name, args.epochs, args.batch_size)
         evaluate_ner_stage()
         generate_scorecards_stage()
@@ -237,3 +285,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

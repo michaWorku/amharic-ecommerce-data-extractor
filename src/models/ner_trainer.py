@@ -4,12 +4,13 @@ import pandas as pd
 from pathlib import Path
 from typing import List, Dict
 
-# Ensure src/utils is in the Python path to import conll_parser
-project_root = Path(__file__).resolve().parents[2] # Adjust this if your structure differs
-sys.path.insert(0, str(project_root))
-sys.path.insert(0, str(project_root / 'src' / 'utils'))
+# Adjust sys.path to allow imports from src
+# Ensure project_root is the directory containing 'src'
+project_root = Path(__file__).resolve().parents[2] 
+sys.path.insert(0, str(project_root)) # This adds the project root to path
 
-from utils.conll_parser import read_conll
+# Corrected import: Now explicitly import from src.utils.conll_parser
+from src.utils.conll_parser import read_conll, write_conll # Added write_conll for __main__ demo
 from datasets import Dataset, DatasetDict
 from transformers import AutoTokenizer, AutoModelForTokenClassification, TrainingArguments, Trainer, DataCollatorForTokenClassification
 import numpy as np
@@ -18,6 +19,9 @@ import logging
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# Global variable for id_to_label, needed by compute_metrics (will be set in train_ner_model)
+id_to_label = {}
 
 def compute_metrics(p):
     """
@@ -128,7 +132,8 @@ def train_ner_model(
     if len(dataset) < 2:
         logger.warning("Dataset has less than 2 samples. Skipping train/test split. All data used for training.")
         train_dataset = dataset
-        eval_dataset = Dataset.from_dict({"tokens": [], "ner_tags": []}) # Create an empty eval dataset
+        # Create an empty eval dataset if there are no samples to split
+        eval_dataset = Dataset.from_dict({"tokens": [], "ner_tags": []})
     else:
         train_test_split = dataset.train_test_split(test_size=1 - train_split_ratio, seed=42)
         train_dataset = train_test_split['train']
