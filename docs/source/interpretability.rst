@@ -7,15 +7,15 @@ Understanding *why* a model makes a particular prediction is as crucial as the p
 
 SHAP values help us understand the contribution of each word (or token) to a specific prediction.
 
-* **Visualization Placeholder (Force Plot):**
-    .. image:: ../_static/shap_force_plot_placeholder.png
-       :alt: SHAP Force Plot Placeholder
+* **Visualization (Force Plot):**
+    .. image:: ../_static/shap_force_plot_1.png
+       :alt: SHAP Force Plot 
        :width: 800px
        :align: center
 
-* **Visualization Placeholder (Waterfall Plot):**
-    .. image:: ../_static/shap_waterfall_plot_placeholder.png
-       :alt: SHAP Waterfall Plot Placeholder
+* **Visualization (Waterfall Plot):**
+    .. image:: ../_static/shap_waterfall_plot_1.png
+       :alt: SHAP Waterfall Plot 
        :width: 600px
        :align: center
 
@@ -29,9 +29,9 @@ SHAP values help us understand the contribution of each word (or token) to a spe
 
 LIME provides local explanations by perturbing the input and observing changes in the model's prediction. This helps to highlight which parts of the input text are most important for a particular prediction.
 
-* **Visualization Placeholder (LIME HTML Output):**
-    .. image:: ../_static/lime_explanation_example_1.png
-       :alt: LIME Explanation Placeholder
+* **Visualization LIME Explanation Example 1:**
+    .. image:: ./_static/lime_explanation_example_1.png
+       :alt: LIME Explanation 
        :width: 800px
        :align: center
 
@@ -44,9 +44,9 @@ LIME provides local explanations by perturbing the input and observing changes i
 
     * LIME's visualization shows how the model locally weighs different words in the sentence to arrive at a particular label for a specific token, even for words that are not explicitly entities themselves but provide crucial context.
 
-* **Visualization Placeholder (LIME HTML Output):**
-    .. image:: ../_static/lime_explanation_example_2.png
-       :alt: LIME Explanation Placeholder
+* **Visualization LIME Explanation Example 2:**
+    .. image:: ./_static/lime_explanation_example_2.png
+       :alt: LIME Explanation 
        :width: 800px
        :align: center
 
